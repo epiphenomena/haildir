@@ -1,6 +1,7 @@
 // Load index data
 let indexData = [];
 let addresses = [];
+let searchIndex = [];
 
 // DOM elements
 const emailList = document.getElementById('email-list');
@@ -17,6 +18,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Load main index
         const indexResponse = await fetch('index.json');
         indexData = await indexResponse.json();
+        
+        // Load search index
+        const searchIndexResponse = await fetch('search_index.json');
+        searchIndex = await searchIndexResponse.json();
         
         // Load addresses for autocomplete
         const addressesResponse = await fetch('addresses.json');
@@ -75,25 +80,35 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-// Filter and search emails
+// Perform full-text search
+function performSearch(term) {
+    if (!term) return indexData;
+    
+    // Convert term to lowercase for case-insensitive search
+    const lowerTerm = term.toLowerCase();
+    
+    // Search in the search index
+    const matchingIds = searchIndex
+        .filter(item => item.content.toLowerCase().includes(lowerTerm))
+        .map(item => item.id);
+    
+    // Filter main index data by matching IDs
+    return indexData.filter(email => matchingIds.includes(email.id));
+}
+
+// Filter emails by various criteria
 function filterEmails() {
-    const searchTerm = searchInput.value.toLowerCase();
+    const searchTerm = searchInput.value.trim();
     const fromTerm = fromFilter.value.toLowerCase();
     const toTerm = toFilter.value.toLowerCase();
     const startDate = dateStart.value;
     const endDate = dateEnd.value;
     
-    const filtered = indexData.filter(email => {
-        // Text search
-        if (searchTerm && 
-            !email.subject.toLowerCase().includes(searchTerm) &&
-            !email.from.toLowerCase().includes(searchTerm) &&
-            !email.to.toLowerCase().includes(searchTerm) &&
-            !email.cc.toLowerCase().includes(searchTerm) &&
-            !email.preview.toLowerCase().includes(searchTerm)) {
-            return false;
-        }
-        
+    // Start with either search results or all emails
+    let filtered = searchTerm ? performSearch(searchTerm) : [...indexData];
+    
+    // Apply additional filters
+    filtered = filtered.filter(email => {
         // From filter
         if (fromTerm && !email.from.toLowerCase().includes(fromTerm)) {
             return false;
