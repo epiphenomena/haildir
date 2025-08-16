@@ -1,7 +1,11 @@
 // Load index data
 let indexData = [];
 let addresses = [];
-let searchIndex = [];
+let searchIndex = {};
+let idMapping = {};
+
+// Create a map for quick lookup of email metadata by ID
+let emailMap = new Map();
 
 // DOM elements
 const emailList = document.getElementById('email-list');
@@ -19,9 +23,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const indexResponse = await fetch('index.json');
         indexData = await indexResponse.json();
         
+        // Create email map for quick lookup
+        indexData.forEach(email => {
+            emailMap.set(email.id, email);
+        });
+        
         // Load search index
         const searchIndexResponse = await fetch('search_index.json');
         searchIndex = await searchIndexResponse.json();
+        
+        // Load ID mapping
+        const idMappingResponse = await fetch('id_mapping.json');
+        idMapping = await idMappingResponse.json();
         
         // Load addresses for autocomplete
         const addressesResponse = await fetch('addresses.json');
@@ -80,20 +93,37 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-// Perform full-text search
+// Perform full-text search using inverted index
 function performSearch(term) {
     if (!term) return indexData;
     
     // Convert term to lowercase for case-insensitive search
     const lowerTerm = term.toLowerCase();
     
-    // Search in the search index
-    const matchingIds = searchIndex
-        .filter(item => item.content.toLowerCase().includes(lowerTerm))
-        .map(item => item.id);
+    // For simple implementation, we'll split the term into words and find emails containing any of those words
+    const words = lowerTerm.split(/\s+/).filter(word => word.length > 0);
+    
+    if (words.length === 0) return indexData;
+    
+    // Find all email IDs that contain any of the search words
+    const matchingIds = new Set();
+    
+    words.forEach(word => {
+        // In a more sophisticated implementation, we might do fuzzy matching or stemming
+        // For now, we'll look for exact matches
+        if (searchIndex[word]) {
+            // Convert integer IDs back to email filenames
+            searchIndex[word].forEach(id => {
+                const emailFilename = idMapping[id];
+                if (emailFilename) {
+                    matchingIds.add(emailFilename);
+                }
+            });
+        }
+    });
     
     // Filter main index data by matching IDs
-    return indexData.filter(email => matchingIds.includes(email.id));
+    return indexData.filter(email => matchingIds.has(email.id));
 }
 
 // Filter emails by various criteria
