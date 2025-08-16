@@ -64,7 +64,19 @@ This will process the Maildir archive and generate a static website in the outpu
 
 Create a test Maildir structure and run the tool on it:
 ```bash
-uv run haildir test/maildir test/output
+rake test
+```
+
+### Running a development server
+
+To run a simple HTTP server to view the generated site:
+```bash
+rake serve
+```
+
+To run tests and then start the server:
+```bash
+rake test_and_serve
 ```
 
 ### Code quality
