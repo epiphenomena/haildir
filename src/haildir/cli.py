@@ -5,6 +5,7 @@ from pathlib import Path
 from email.utils import parseaddr
 from datetime import datetime
 import hashlib
+import shutil
 
 def parse_maildir(maildir_path: Path, output_path: Path) -> list:
     """Parse Maildir and extract email data."""
@@ -116,6 +117,14 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> list:
     
     return email_metadata
 
+def copy_assets(output_path: Path) -> None:
+    """Copy static assets to output directory."""
+    assets_src = Path(__file__).parent / "assets"
+    if assets_src.exists():
+        for item in assets_src.iterdir():
+            if item.is_file():
+                shutil.copy2(item, output_path / item.name)
+
 @click.command()
 @click.argument('maildir_path', type=click.Path(exists=True, file_okay=False, dir_okay=True, resolve_path=True))
 @click.argument('output_path', type=click.Path(file_okay=False, dir_okay=True, resolve_path=True))
@@ -136,12 +145,7 @@ def main(maildir_path: str, output_path: str) -> None:
         json.dump(email_metadata, f, ensure_ascii=False, indent=2)
     
     # Copy assets
-    import shutil
-    assets_src = Path(__file__).parent / "assets"
-    if assets_src.exists():
-        for item in assets_src.iterdir():
-            if item.is_file():
-                shutil.copy2(item, output_path / item.name)
+    copy_assets(output_path)
     
     click.echo(f"Processed Maildir: {maildir_path}")
     click.echo(f"Output directory: {output_path}")
