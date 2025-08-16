@@ -4,7 +4,7 @@ Convert Maildir archives to a static, searchable HTML site.
 
 ## Overview
 
-`haildir` is a tool that converts Maildir email archives into a static HTML website that can be easily browsed and searched. It's designed to handle large archives (10+ GB) by processing emails incrementally and generating efficient static indexes.
+`haildir` is a tool that converts Maildir email archives into a static HTML website that can be easily browsed and searched. It's designed to handle large archives (10+ GB) by processing emails incrementally and generating efficient static indexes. Created with Qwen code -- less than an hour of human input -- a passable output. It successfully loads and searches a 15GB+ maildir created by getmail downloaded from gmail.
 
 ## Features
 

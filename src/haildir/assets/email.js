@@ -47,9 +47,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             bodyElement.innerHTML = '<p>No content available</p>';
         }
         
-        // TODO: Handle attachments when implemented
-        // For now, hide the attachments section
-        document.getElementById('attachments-section').style.display = 'none';
+        // Display attachments
+        const attachmentsSection = document.getElementById('attachments-section');
+        const attachmentList = document.getElementById('attachment-list');
+        
+        if (email.attachments && email.attachments.length > 0) {
+            attachmentList.innerHTML = email.attachments.map(attachment => `
+                <li class="attachment-item">
+                    <a href="attachments/${attachment.saved_filename}" target="_blank">
+                        <span class="attachment-icon">📎</span>
+                        <span>${escapeHtml(attachment.filename)}</span>
+                    </a>
+                </li>
+            `).join('');
+            attachmentsSection.style.display = 'block';
+        } else {
+            attachmentsSection.style.display = 'none';
+        }
         
     } catch (error) {
         console.error('Error loading email:', error);
