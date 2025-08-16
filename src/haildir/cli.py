@@ -6,7 +6,7 @@ from email.utils import parseaddr
 from datetime import datetime
 import hashlib
 
-def parse_maildir(maildir_path: Path, output_path: Path) -> None:
+def parse_maildir(maildir_path: Path, output_path: Path) -> list:
     """Parse Maildir and extract email data."""
     maildir = mailbox.Maildir(str(maildir_path))
     
@@ -16,6 +16,9 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     
     # Track unique addresses for autocomplete
     addresses = set()
+    
+    # Store email metadata for index
+    email_metadata = []
     
     # Process each message
     for key, msg in maildir.items():
@@ -72,6 +75,9 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
                 elif msg.get_content_type() == "text/html":
                     body_html = msg.get_payload(decode=True).decode(msg.get_content_charset() or 'utf-8', errors='replace')
             
+            # Create preview text (first 100 characters of body)
+            preview = (body_text or body_html)[:100].replace('\n', ' ').strip()
+            
             # Save email data to JSON file
             email_data = {
                 "id": safe_message_id,
@@ -88,6 +94,17 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
             with open(email_file, 'w', encoding='utf-8') as f:
                 json.dump(email_data, f, ensure_ascii=False, indent=2)
                 
+            # Store metadata for index
+            email_metadata.append({
+                "id": safe_message_id,
+                "date": date_iso,
+                "subject": subject,
+                "from": from_addr,
+                "to": to_addr,
+                "cc": cc_addr,
+                "preview": preview
+            })
+                
         except Exception as e:
             print(f"Error processing message {key}: {e}")
             continue
@@ -96,6 +113,8 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     addresses_file = output_path / "addresses.json"
     with open(addresses_file, 'w', encoding='utf-8') as f:
         json.dump(list(addresses), f, ensure_ascii=False, indent=2)
+    
+    return email_metadata
 
 @click.command()
 @click.argument('maildir_path', type=click.Path(exists=True, file_okay=False, dir_okay=True, resolve_path=True))
@@ -109,10 +128,24 @@ def main(maildir_path: str, output_path: str) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Parse maildir
-    parse_maildir(maildir_path, output_path)
+    email_metadata = parse_maildir(maildir_path, output_path)
+    
+    # Create index
+    index_file = output_path / "index.json"
+    with open(index_file, 'w', encoding='utf-8') as f:
+        json.dump(email_metadata, f, ensure_ascii=False, indent=2)
+    
+    # Copy assets
+    import shutil
+    assets_src = Path(__file__).parent / "assets"
+    if assets_src.exists():
+        for item in assets_src.iterdir():
+            if item.is_file():
+                shutil.copy2(item, output_path / item.name)
     
     click.echo(f"Processed Maildir: {maildir_path}")
     click.echo(f"Output directory: {output_path}")
+    click.echo(f"Generated {len(email_metadata)} email entries")
 
 if __name__ == '__main__':
     main()
