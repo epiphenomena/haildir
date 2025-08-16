@@ -1,0 +1,12 @@
+{
+  "name": "haildir",
+  "version": "0.1.0",
+  "description": "Convert Maildir archives to a static, searchable HTML site.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Your Name",
+  "license": "MIT"
+}

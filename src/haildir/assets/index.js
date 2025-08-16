@@ -1,0 +1,148 @@
+// Load index data
+let indexData = [];
+let addresses = [];
+
+// DOM elements
+const emailList = document.getElementById('email-list');
+const searchInput = document.getElementById('search-input');
+const searchButton = document.getElementById('search-button');
+const fromFilter = document.getElementById('from-filter');
+const toFilter = document.getElementById('to-filter');
+const dateStart = document.getElementById('date-start');
+const dateEnd = document.getElementById('date-end');
+
+// Load data on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        // Load main index
+        const indexResponse = await fetch('index.json');
+        indexData = await indexResponse.json();
+        
+        // Load addresses for autocomplete
+        const addressesResponse = await fetch('addresses.json');
+        addresses = await addressesResponse.json();
+        
+        // Initialize autocomplete
+        initAutocomplete();
+        
+        // Display all emails initially
+        displayEmails(indexData);
+    } catch (error) {
+        console.error('Error loading data:', error);
+        emailList.innerHTML = '<li>Error loading email data</li>';
+    }
+});
+
+// Display emails in the list
+function displayEmails(emails) {
+    if (emails.length === 0) {
+        emailList.innerHTML = '<li>No emails found</li>';
+        return;
+    }
+    
+    emailList.innerHTML = emails.map(email => `
+        <li class="email-item" data-id="${email.id}">
+            <div class="email-subject">${escapeHtml(email.subject)}</div>
+            <div class="email-from">From: ${escapeHtml(email.from)}</div>
+            <div class="email-date">${formatDate(email.date)}</div>
+            <div class="email-preview">${escapeHtml(email.preview)}</div>
+        </li>
+    `).join('');
+    
+    // Add click handlers to email items
+    document.querySelectorAll('.email-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const emailId = item.getAttribute('data-id');
+            window.location.href = `email.html?id=${emailId}`;
+        });
+    });
+}
+
+// Format date for display
+function formatDate(dateString) {
+    if (!dateString) return 'Unknown date';
+    const date = new Date(dateString);
+    return date.toLocaleString();
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// Filter and search emails
+function filterEmails() {
+    const searchTerm = searchInput.value.toLowerCase();
+    const fromTerm = fromFilter.value.toLowerCase();
+    const toTerm = toFilter.value.toLowerCase();
+    const startDate = dateStart.value;
+    const endDate = dateEnd.value;
+    
+    const filtered = indexData.filter(email => {
+        // Text search
+        if (searchTerm && 
+            !email.subject.toLowerCase().includes(searchTerm) &&
+            !email.from.toLowerCase().includes(searchTerm) &&
+            !email.to.toLowerCase().includes(searchTerm) &&
+            !email.cc.toLowerCase().includes(searchTerm) &&
+            !email.preview.toLowerCase().includes(searchTerm)) {
+            return false;
+        }
+        
+        // From filter
+        if (fromTerm && !email.from.toLowerCase().includes(fromTerm)) {
+            return false;
+        }
+        
+        // To filter
+        if (toTerm && !email.to.toLowerCase().includes(toTerm)) {
+            return false;
+        }
+        
+        // Date range filter
+        if (startDate && email.date < startDate) {
+            return false;
+        }
+        
+        if (endDate && email.date > endDate) {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    displayEmails(filtered);
+}
+
+// Initialize autocomplete for address fields
+function initAutocomplete() {
+    // Simple autocomplete implementation
+    [fromFilter, toFilter].forEach(input => {
+        input.addEventListener('input', () => {
+            const value = input.value.toLowerCase();
+            if (value.length > 2) {
+                const matches = addresses.filter(addr => addr.includes(value));
+                // In a real implementation, you would show these matches in a dropdown
+                // For simplicity, we're just logging them
+                console.log('Matches for', value, ':', matches);
+            }
+        });
+    });
+}
+
+// Event listeners
+searchButton.addEventListener('click', filterEmails);
+searchInput.addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') {
+        filterEmails();
+    }
+});
+
+[fromFilter, toFilter, dateStart, dateEnd].forEach(element => {
+    element.addEventListener('change', filterEmails);
+});

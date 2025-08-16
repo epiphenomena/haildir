@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>haildir - Email Archive</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>haildir Email Archive</h1>
+        </div>
+        
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search emails...">
+            <button id="search-button">Search</button>
+        </div>
+        
+        <div class="filters">
+            <div class="filter-group">
+                <label for="from-filter">From:</label>
+                <input type="text" id="from-filter" placeholder="Filter by sender">
+            </div>
+            <div class="filter-group">
+                <label for="to-filter">To:</label>
+                <input type="text" id="to-filter" placeholder="Filter by recipient">
+            </div>
+            <div class="filter-group">
+                <label for="date-start">Start Date:</label>
+                <input type="date" id="date-start">
+            </div>
+            <div class="filter-group">
+                <label for="date-end">End Date:</label>
+                <input type="date" id="date-end">
+            </div>
+        </div>
+        
+        <ul class="email-list" id="email-list">
+            <!-- Email items will be populated by JavaScript -->
+        </ul>
+    </div>
+    
+    <script src="index.js"></script>
+</body>
+</html>

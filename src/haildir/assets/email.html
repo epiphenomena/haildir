@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>haildir - Email Detail</title>
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="email-detail">
+            <div class="email-detail-header">
+                <h1 class="email-detail-subject" id="email-subject">Loading...</h1>
+                <div class="email-detail-from" id="email-from"></div>
+                <div class="email-detail-date" id="email-date"></div>
+                <div class="email-detail-to" id="email-to"></div>
+                <div class="email-detail-cc" id="email-cc"></div>
+            </div>
+            
+            <div class="email-detail-body" id="email-body">
+                Loading email content...
+            </div>
+            
+            <div class="attachments" id="attachments-section" style="display: none;">
+                <h3>Attachments</h3>
+                <ul class="attachment-list" id="attachment-list">
+                    <!-- Attachments will be populated by JavaScript -->
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <script src="../email.js"></script>
+</body>
+</html>
