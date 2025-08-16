@@ -1,0 +1,10 @@
+From: sender@example.com
+To: another@example.com
+Cc: recipient@example.com
+Subject: Test Email 3
+Date: Wed, 03 Jan 2024 12:00:00 +0000
+Message-ID: <test3@example.com>
+
+This is the body of test email 3.
+It has multiple lines.
+And even more lines.
