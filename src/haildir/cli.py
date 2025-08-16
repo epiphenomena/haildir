@@ -103,7 +103,9 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> list:
                 "from": from_addr,
                 "to": to_addr,
                 "cc": cc_addr,
-                "preview": preview
+                "preview": preview,
+                # For full-text search
+                "content": f"{subject} {from_addr} {to_addr} {cc_addr} {body_text} {body_html}"
             })
                 
         except Exception as e:
@@ -116,6 +118,21 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> list:
         json.dump(list(addresses), f, ensure_ascii=False, indent=2)
     
     return email_metadata
+
+def create_search_index(email_metadata: list, output_path: Path) -> None:
+    """Create a static search index for full-text search."""
+    # Create search index data
+    search_index = []
+    for email in email_metadata:
+        search_index.append({
+            "id": email["id"],
+            "content": email["content"]
+        })
+    
+    # Save search index
+    search_index_file = output_path / "search_index.json"
+    with open(search_index_file, 'w', encoding='utf-8') as f:
+        json.dump(search_index, f, ensure_ascii=False, indent=2)
 
 def copy_assets(output_path: Path) -> None:
     """Copy static assets to output directory."""
@@ -143,6 +160,9 @@ def main(maildir_path: str, output_path: str) -> None:
     index_file = output_path / "index.json"
     with open(index_file, 'w', encoding='utf-8') as f:
         json.dump(email_metadata, f, ensure_ascii=False, indent=2)
+    
+    # Create search index
+    create_search_index(email_metadata, output_path)
     
     # Copy assets
     copy_assets(output_path)
