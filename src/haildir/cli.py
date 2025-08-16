@@ -7,19 +7,32 @@ from datetime import datetime
 import hashlib
 import shutil
 
-def parse_maildir(maildir_path: Path, output_path: Path) -> list:
-    """Parse Maildir and extract email data."""
+def parse_maildir(maildir_path: Path, output_path: Path) -> None:
+    """Parse Maildir and extract email data, building indexes incrementally."""
     maildir = mailbox.Maildir(str(maildir_path))
     
     # Create directory for email data
     emails_dir = output_path / "emails"
     emails_dir.mkdir(exist_ok=True)
     
+    # Create files for incremental index building
+    index_file = output_path / "index.json"
+    search_index_file = output_path / "search_index.json"
+    addresses_file = output_path / "addresses.json"
+    
+    # Initialize index files with opening brackets
+    with open(index_file, 'w', encoding='utf-8') as f:
+        f.write('[\n')
+    
+    with open(search_index_file, 'w', encoding='utf-8') as f:
+        f.write('[\n')
+    
     # Track unique addresses for autocomplete
     addresses = set()
     
-    # Store email metadata for index
-    email_metadata = []
+    # Track if we've written the first item to each index file
+    first_index_item = True
+    first_search_item = True
     
     # Process each message
     for key, msg in maildir.items():
@@ -94,45 +107,50 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> list:
             email_file = emails_dir / f"{safe_message_id}.json"
             with open(email_file, 'w', encoding='utf-8') as f:
                 json.dump(email_data, f, ensure_ascii=False, indent=2)
-                
-            # Store metadata for index
-            email_metadata.append({
+            
+            # Add to main index
+            index_entry = {
                 "id": safe_message_id,
                 "date": date_iso,
                 "subject": subject,
                 "from": from_addr,
                 "to": to_addr,
                 "cc": cc_addr,
-                "preview": preview,
-                # For full-text search
+                "preview": preview
+            }
+            
+            with open(index_file, 'a', encoding='utf-8') as f:
+                if not first_index_item:
+                    f.write(',\n')
+                json.dump(index_entry, f, ensure_ascii=False, indent=2)
+                first_index_item = False
+            
+            # Add to search index
+            search_entry = {
+                "id": safe_message_id,
                 "content": f"{subject} {from_addr} {to_addr} {cc_addr} {body_text} {body_html}"
-            })
+            }
+            
+            with open(search_index_file, 'a', encoding='utf-8') as f:
+                if not first_search_item:
+                    f.write(',\n')
+                json.dump(search_entry, f, ensure_ascii=False, indent=2)
+                first_search_item = False
                 
         except Exception as e:
             print(f"Error processing message {key}: {e}")
             continue
     
+    # Close index files with closing brackets
+    with open(index_file, 'a', encoding='utf-8') as f:
+        f.write('\n]')
+    
+    with open(search_index_file, 'a', encoding='utf-8') as f:
+        f.write('\n]')
+    
     # Save addresses for autocomplete
-    addresses_file = output_path / "addresses.json"
     with open(addresses_file, 'w', encoding='utf-8') as f:
         json.dump(list(addresses), f, ensure_ascii=False, indent=2)
-    
-    return email_metadata
-
-def create_search_index(email_metadata: list, output_path: Path) -> None:
-    """Create a static search index for full-text search."""
-    # Create search index data
-    search_index = []
-    for email in email_metadata:
-        search_index.append({
-            "id": email["id"],
-            "content": email["content"]
-        })
-    
-    # Save search index
-    search_index_file = output_path / "search_index.json"
-    with open(search_index_file, 'w', encoding='utf-8') as f:
-        json.dump(search_index, f, ensure_ascii=False, indent=2)
 
 def copy_assets(output_path: Path) -> None:
     """Copy static assets to output directory."""
@@ -154,22 +172,18 @@ def main(maildir_path: str, output_path: str) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Parse maildir
-    email_metadata = parse_maildir(maildir_path, output_path)
-    
-    # Create index
-    index_file = output_path / "index.json"
-    with open(index_file, 'w', encoding='utf-8') as f:
-        json.dump(email_metadata, f, ensure_ascii=False, indent=2)
-    
-    # Create search index
-    create_search_index(email_metadata, output_path)
+    parse_maildir(maildir_path, output_path)
     
     # Copy assets
     copy_assets(output_path)
     
+    # Count processed emails by counting files in emails directory
+    emails_dir = output_path / "emails"
+    email_count = len([f for f in emails_dir.iterdir() if f.is_file()]) if emails_dir.exists() else 0
+    
     click.echo(f"Processed Maildir: {maildir_path}")
     click.echo(f"Output directory: {output_path}")
-    click.echo(f"Generated {len(email_metadata)} email entries")
+    click.echo(f"Generated {email_count} email entries")
 
 if __name__ == '__main__':
     main()
