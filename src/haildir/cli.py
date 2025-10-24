@@ -38,24 +38,28 @@ def extract_email_data(msg, key: str, attachments_dir: Path) -> dict:
 
     # Parse headers
     date_str = msg.get("Date", "")
-    try:
-        date_obj = (
-            datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
-            if date_str
-            else None
-        )
-        date_iso = date_obj.isoformat() if date_obj else ""
-    except ValueError:
-        # Handle common date format variations
-        try:
-            date_obj = (
-                datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
-                if date_str
-                else None
-            )
-            date_iso = date_obj.isoformat() if date_obj else ""
-        except ValueError:
-            date_iso = ""  # Unable to parse date
+    date_obj = None
+    
+    if date_str:
+        # Try different date formats
+        date_formats = [
+            "%a, %d %b %Y %H:%M:%S %z",  # Format: "Thu, 23 Oct 2025 15:59:51 -0500"
+            "%d %b %Y %H:%M:%S %z",     # Format: "14 Oct 2025 12:11:57 -0400"
+            "%a, %d %b %Y %H:%M:%S",    # Format without timezone
+            "%d %b %Y %H:%M:%S"         # Format without weekday and timezone
+        ]
+        
+        for date_format in date_formats:
+            try:
+                date_obj = datetime.strptime(date_str, date_format)
+                break  # If successful, break out of the loop
+            except ValueError:
+                continue  # Try the next format
+        
+        if date_obj is None:
+            logger.warning(f"Unable to parse date: {date_str}")
+    
+    date_iso = date_obj.isoformat() if date_obj else ""
 
     subject = msg.get("Subject", "")
     if isinstance(subject, std_email.header.Header):
