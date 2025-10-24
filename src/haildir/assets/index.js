@@ -70,12 +70,13 @@ function sortEmailsByDate(emails) {
     });
 }
 
-// Implement virtual scrolling for large email lists
+// Implement pagination with show more button
 let currentEmails = [];
 let displayedCount = 0;
-const batchSize = 500;
+const batchSize = 100;  // Changed from 500 to 100 as requested
+let showMoreButton = null;
 
-// Display emails in the list with virtual scrolling
+// Display emails in the list with show more button
 function displayEmails(emails) {
     // Store all emails for potential future display
     currentEmails = sortEmailsByDate(emails);
@@ -86,6 +87,8 @@ function displayEmails(emails) {
     
     if (currentEmails.length === 0) {
         emailList.innerHTML = '<li>No emails found</li>';
+        // Hide the show more button if there are no results
+        document.getElementById('show-more-container').style.display = 'none';
         return;
     }
     
@@ -95,8 +98,14 @@ function displayEmails(emails) {
     // Display first batch of emails
     showNextBatch();
     
-    // Add scroll event listener for virtual scrolling
-    emailList.addEventListener('scroll', handleScroll);
+    // Get the show more button and attach event listener
+    if (!showMoreButton) {
+        showMoreButton = document.getElementById('show-more-button');
+        showMoreButton.addEventListener('click', showNextBatch);
+    }
+    
+    // Show or hide the show more button based on whether there are more emails to display
+    updateShowMoreButtonVisibility();
 }
 
 function updateResultsCount(count) {
@@ -154,13 +163,19 @@ function showNextBatch() {
     });
     
     displayedCount = end;
+    
+    // Update visibility of show more button
+    updateShowMoreButtonVisibility();
 }
 
-function handleScroll() {
-    // Check if we've scrolled near the bottom
-    const { scrollTop, scrollHeight, clientHeight } = emailList;
-    if (scrollHeight - scrollTop <= clientHeight + 100 && displayedCount < currentEmails.length) {
-        showNextBatch();
+function updateShowMoreButtonVisibility() {
+    const showMoreContainer = document.getElementById('show-more-container');
+    if (displayedCount >= currentEmails.length) {
+        // Hide the button if all emails are displayed
+        showMoreContainer.style.display = 'none';
+    } else {
+        // Show the button if there are more emails to display
+        showMoreContainer.style.display = 'block';
     }
 }
 
