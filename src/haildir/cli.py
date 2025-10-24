@@ -167,6 +167,9 @@ def extract_email_data(msg, key: str, attachments_dir: Path) -> dict:
         "to": to_addr,
         "cc": cc_addr,
         "preview": preview,
+        "has_attachments": len(attachments) > 0,
+        "attachment_count": len(attachments),
+        "attachments": [a["filename"] for a in attachments]  # Just the filenames for the index
     }
 
     return email_data, index_entry, addresses

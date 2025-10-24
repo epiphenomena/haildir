@@ -116,6 +116,12 @@ body {
   text-overflow: ellipsis;
 }
 
+.email-attachments {
+  font-size: 0.85em;
+  color: #666;
+  margin-top: 5px;
+}
+
 /* Email detail page */
 .email-detail {
   padding: 20px;

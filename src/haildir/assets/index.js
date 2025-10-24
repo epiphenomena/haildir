@@ -113,14 +113,28 @@ function showNextBatch() {
     
     const batch = currentEmails.slice(start, end);
     
-    const batchHTML = batch.map(email => `
-        <li class="email-item" data-id="${email.id}">
-            <div class="email-subject">${escapeHtml(email.subject)}</div>
-            <div class="email-from">From: ${escapeHtml(email.from)}</div>
-            <div class="email-date">${formatDate(email.date)}</div>
-            <div class="email-preview">${escapeHtml(email.preview)}</div>
-        </li>
-    `).join('');
+    const batchHTML = batch.map(email => {
+        // Format attachment information
+        let attachmentInfo = '';
+        if (email.has_attachments && email.attachments && email.attachments.length > 0) {
+            // Show up to 3 attachment names
+            const attachmentNames = email.attachments.slice(0, 3).map(escapeHtml).join(', ');
+            const moreCount = email.attachments.length > 3 ? ` and ${email.attachments.length - 3} more` : '';
+            attachmentInfo = `<div class="email-attachments">📎 ${attachmentNames}${moreCount}</div>`;
+        } else if (email.has_attachments) {
+            attachmentInfo = '<div class="email-attachments">📎 Attachment</div>';
+        }
+        
+        return `
+            <li class="email-item" data-id="${email.id}">
+                <div class="email-subject">${escapeHtml(email.subject)}</div>
+                <div class="email-from">From: ${escapeHtml(email.from)}</div>
+                <div class="email-date">${formatDate(email.date)}</div>
+                <div class="email-preview">${escapeHtml(email.preview)}</div>
+                ${attachmentInfo}
+            </li>
+        `;
+    }).join('');
     
     emailList.insertAdjacentHTML('beforeend', batchHTML);
     
