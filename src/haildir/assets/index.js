@@ -15,6 +15,7 @@ const fromFilter = document.getElementById('from-filter');
 const toFilter = document.getElementById('to-filter');
 const dateStart = document.getElementById('date-start');
 const dateEnd = document.getElementById('date-end');
+const hasAttachment = document.getElementById('has-attachment');
 
 // Load data on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -216,6 +217,7 @@ function filterEmails() {
     const toTerm = toFilter.value.toLowerCase();
     const startDate = dateStart.value;
     const endDate = dateEnd.value;
+    const hasAttachmentFilter = hasAttachment.checked;
     
     // Start with either search results or all emails
     let filtered = searchTerm ? performSearch(searchTerm) : [...indexData];
@@ -238,6 +240,11 @@ function filterEmails() {
         }
         
         if (endDate && email.date > endDate) {
+            return false;
+        }
+        
+        // Attachment filter
+        if (hasAttachmentFilter && !email.has_attachments) {
             return false;
         }
         
