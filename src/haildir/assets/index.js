@@ -76,6 +76,9 @@ function displayEmails(emails) {
     currentEmails = sortEmailsByDate(emails);
     displayedCount = 0;
     
+    // Update results count
+    updateResultsCount(currentEmails.length);
+    
     if (currentEmails.length === 0) {
         emailList.innerHTML = '<li>No emails found</li>';
         return;
@@ -89,6 +92,19 @@ function displayEmails(emails) {
     
     // Add scroll event listener for virtual scrolling
     emailList.addEventListener('scroll', handleScroll);
+}
+
+function updateResultsCount(count) {
+    const resultsCountElement = document.getElementById('results-count');
+    if (resultsCountElement) {
+        if (count === 0) {
+            resultsCountElement.textContent = 'No emails found';
+        } else if (count === 1) {
+            resultsCountElement.textContent = '1 email found';
+        } else {
+            resultsCountElement.textContent = `${count} emails found`;
+        }
+    }
 }
 
 function showNextBatch() {

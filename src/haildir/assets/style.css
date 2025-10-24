@@ -69,6 +69,14 @@ body {
   border-radius: 4px;
 }
 
+.results-count {
+  margin-bottom: 15px;
+  padding: 8px 0;
+  font-weight: bold;
+  color: #333;
+  border-bottom: 1px solid #eee;
+}
+
 .email-list {
   list-style: none;
   padding: 0;
