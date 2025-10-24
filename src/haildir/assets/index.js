@@ -65,17 +65,39 @@ function sortEmailsByDate(emails) {
     });
 }
 
-// Display emails in the list
+// Implement virtual scrolling for large email lists
+let currentEmails = [];
+let displayedCount = 0;
+const batchSize = 500;
+
+// Display emails in the list with virtual scrolling
 function displayEmails(emails) {
-    if (emails.length === 0) {
+    // Store all emails for potential future display
+    currentEmails = sortEmailsByDate(emails);
+    displayedCount = 0;
+    
+    if (currentEmails.length === 0) {
         emailList.innerHTML = '<li>No emails found</li>';
         return;
     }
     
-    // Sort emails by date (newest first)
-    const sortedEmails = sortEmailsByDate(emails);
+    // Clear the email list
+    emailList.innerHTML = '';
     
-    emailList.innerHTML = sortedEmails.map(email => `
+    // Display first batch of emails
+    showNextBatch();
+    
+    // Add scroll event listener for virtual scrolling
+    emailList.addEventListener('scroll', handleScroll);
+}
+
+function showNextBatch() {
+    const start = displayedCount;
+    const end = Math.min(start + batchSize, currentEmails.length);
+    
+    const batch = currentEmails.slice(start, end);
+    
+    const batchHTML = batch.map(email => `
         <li class="email-item" data-id="${email.id}">
             <div class="email-subject">${escapeHtml(email.subject)}</div>
             <div class="email-from">From: ${escapeHtml(email.from)}</div>
@@ -84,13 +106,27 @@ function displayEmails(emails) {
         </li>
     `).join('');
     
-    // Add click handlers to email items
-    document.querySelectorAll('.email-item').forEach(item => {
+    emailList.insertAdjacentHTML('beforeend', batchHTML);
+    
+    // Add click handlers to new email items
+    const newItems = emailList.querySelectorAll(`.email-item:not([data-handled])`);
+    newItems.forEach(item => {
+        item.setAttribute('data-handled', 'true');
         item.addEventListener('click', () => {
             const emailId = item.getAttribute('data-id');
             window.location.href = `email.html?id=${emailId}`;
         });
     });
+    
+    displayedCount = end;
+}
+
+function handleScroll() {
+    // Check if we've scrolled near the bottom
+    const { scrollTop, scrollHeight, clientHeight } = emailList;
+    if (scrollHeight - scrollTop <= clientHeight + 100 && displayedCount < currentEmails.length) {
+        showNextBatch();
+    }
 }
 
 // Format date for display
