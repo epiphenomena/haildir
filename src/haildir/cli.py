@@ -8,6 +8,7 @@ from datetime import datetime
 import hashlib
 import shutil
 import logging
+from dateutil import parser as dateutil_parser
 from .search import InvertedIndex
 
 # Configure logging
@@ -41,42 +42,11 @@ def extract_email_data(msg, key: str, attachments_dir: Path) -> dict:
     date_obj = None
     
     if date_str:
-        # Remove named timezones in parentheses (e.g., "(PDT)", "(EST)")
-        import re
-        clean_date_str = re.sub(r'\([^)]*\)', '', date_str).strip()
-        
-        # Also handle cases where named timezone is without parentheses at the end
-        # Common named timezones that we'll remove: PDT, PST, EST, EDT, CST, MST, etc.
-        named_timezones = [
-            'PST', 'PDT', 'MST', 'MDT', 'CST', 'CDT', 'EST', 'EDT', 
-            'GMT', 'UTC', 'UT', 'Z', 'A', 'B', 'C', 'D', 'E', 'F', 
-            'G', 'H', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 
-            'S', 'T', 'U', 'V', 'W', 'X', 'Y'
-        ]
-        
-        # Remove named timezones that appear at the end of the string
-        for tz in named_timezones:
-            if clean_date_str.upper().endswith(' ' + tz):
-                clean_date_str = clean_date_str[:-len(tz)-1].rstrip()
-                break
-
-        # Try different date formats
-        date_formats = [
-            "%a, %d %b %Y %H:%M:%S %z",  # Format: "Thu, 23 Oct 2025 15:59:51 -0500"
-            "%d %b %Y %H:%M:%S %z",     # Format: "14 Oct 2025 12:11:57 -0400"
-            "%a, %d %b %Y %H:%M:%S",    # Format without timezone
-            "%d %b %Y %H:%M:%S"         # Format without weekday and timezone
-        ]
-        
-        for date_format in date_formats:
-            try:
-                date_obj = datetime.strptime(clean_date_str, date_format)
-                break  # If successful, break out of the loop
-            except ValueError:
-                continue  # Try the next format
-        
-        if date_obj is None:
-            logger.warning(f"Unable to parse date: {date_str}")
+        try:
+            # Use dateutil to parse the date string, which handles many formats automatically
+            date_obj = dateutil_parser.parse(date_str)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Unable to parse date: {date_str}. Error: {e}")
     
     date_iso = date_obj.isoformat() if date_obj else ""
 
