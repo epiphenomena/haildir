@@ -207,6 +207,9 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     # Create incremental inverted index
     inverted_index = InvertedIndex(output_path)
 
+    # Track email IDs to prevent duplicates
+    processed_email_ids = set()
+
     # Process each message with progress bar
     with click.progressbar(
         maildir.iteritems(),
@@ -219,12 +222,20 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
                 # Extract email data using the new function
                 email_data, index_entry, email_addresses = extract_email_data(msg, key, attachments_dir)
 
+                # Check if this email ID has already been processed to avoid duplicates
+                email_id = email_data['id']
+                if email_id in processed_email_ids:
+                    logger.debug(f"Skipping duplicate email with ID: {email_id}")
+                    continue
+
+                # Add to processed set
+                processed_email_ids.add(email_id)
 
                 # Update the global addresses set with extracted addresses
                 addresses.update(email_addresses)
 
                 # Save email data to JSON file
-                email_file = emails_dir / f"{email_data['id']}.json"
+                email_file = emails_dir / f"{email_id}.json"
                 with open(email_file, "w", encoding="utf-8") as f:
                     json.dump(email_data, f, ensure_ascii=False, indent=None)
 
@@ -238,7 +249,7 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
                 # Add to inverted search index (only metadata needed for indexing, excluding attachments)
                 inverted_index.add_email(
                     {
-                        "id": email_data['id'],
+                        "id": email_id,
                         "subject": email_data["subject"],
                         "from": email_data["from"],
                         "to": email_data["to"],
@@ -247,7 +258,7 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
                         "body_html": email_data['body_html'],
                     }
                 )
-                logger.debug(f"Added email {email_data['id']} to inverted index")
+                logger.debug(f"Added email {email_id} to inverted index")
 
             except Exception as e:
                 logger.error(f"Error processing message {key}: {e}", exc_info=True)
