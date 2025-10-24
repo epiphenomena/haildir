@@ -56,10 +56,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 function sortEmailsByDate(emails) {
     return emails.sort((a, b) => {
         // Convert date strings to Date objects for comparison
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
+        const dateA = a.date ? new Date(a.date) : new Date(0);  // Use epoch date for missing dates
+        const dateB = b.date ? new Date(b.date) : new Date(0);
         
         // Compare dates in descending order (newest first)
+        // If either date is invalid, put it at the end
+        if (isNaN(dateA.getTime())) return 1;
+        if (isNaN(dateB.getTime())) return -1;
+        
         if (dateB > dateA) return 1;
         if (dateB < dateA) return -1;
         return 0;
