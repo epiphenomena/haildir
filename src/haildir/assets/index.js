@@ -51,6 +51,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+// Sort emails by date (newest first)
+function sortEmailsByDate(emails) {
+    return emails.sort((a, b) => {
+        // Convert date strings to Date objects for comparison
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        
+        // Compare dates in descending order (newest first)
+        if (dateB > dateA) return 1;
+        if (dateB < dateA) return -1;
+        return 0;
+    });
+}
+
 // Display emails in the list
 function displayEmails(emails) {
     if (emails.length === 0) {
@@ -58,7 +72,10 @@ function displayEmails(emails) {
         return;
     }
     
-    emailList.innerHTML = emails.map(email => `
+    // Sort emails by date (newest first)
+    const sortedEmails = sortEmailsByDate(emails);
+    
+    emailList.innerHTML = sortedEmails.map(email => `
         <li class="email-item" data-id="${email.id}">
             <div class="email-subject">${escapeHtml(email.subject)}</div>
             <div class="email-from">From: ${escapeHtml(email.from)}</div>
