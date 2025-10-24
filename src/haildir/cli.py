@@ -252,7 +252,7 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
 
     # Save addresses for autocomplete
     with open(addresses_file, "w", encoding="utf-8") as f:
-        json.dump(list(addresses), f, ensure_ascii=False, indent=2)
+        json.dump(list(addresses), f, ensure_ascii=False, indent=None)
 
     # Finalize the inverted index
     inverted_index.finalize()
