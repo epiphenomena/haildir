@@ -200,50 +200,51 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     # Create incremental inverted index
     inverted_index = InvertedIndex(output_path)
 
-    # Process each message
-    processed_count = 0
-    for key, msg in maildir.iteritems():
-        processed_count += 1
-        if processed_count % 5000 == 0:
-            logger.info(f"Processing email {processed_count}/{total_messages}")
+    # Process each message with progress bar
+    with click.progressbar(
+        maildir.iteritems(), 
+        length=total_messages, 
+        label='Processing emails',
+        item_show_func=lambda x: f"Email {x[0] if x else ''}" if x else ""
+    ) as bar:
+        for key, msg in bar:
+            try:
+                # Extract email data using the new function
+                email_data, index_entry, email_addresses = extract_email_data(msg, key, attachments_dir)
 
-        try:
-            # Extract email data using the new function
-            email_data, index_entry, email_addresses = extract_email_data(msg, key, attachments_dir)
 
+                # Update the global addresses set with extracted addresses
+                addresses.update(email_addresses)
 
-            # Update the global addresses set with extracted addresses
-            addresses.update(email_addresses)
+                # Save email data to JSON file
+                email_file = emails_dir / f"{email_data['id']}.json"
+                with open(email_file, "w", encoding="utf-8") as f:
+                    json.dump(email_data, f, ensure_ascii=False, indent=2)
 
-            # Save email data to JSON file
-            email_file = emails_dir / f"{email_data['id']}.json"
-            with open(email_file, "w", encoding="utf-8") as f:
-                json.dump(email_data, f, ensure_ascii=False, indent=2)
+                # Add to main index
+                with open(index_file, "a", encoding="utf-8") as f:
+                    if not first_index_item:
+                        f.write(",\n")
+                    json.dump(index_entry, f, ensure_ascii=False, indent=2)
+                    first_index_item = False
 
-            # Add to main index
-            with open(index_file, "a", encoding="utf-8") as f:
-                if not first_index_item:
-                    f.write(",\n")
-                json.dump(index_entry, f, ensure_ascii=False, indent=2)
-                first_index_item = False
+                # Add to inverted search index (only metadata needed for indexing, excluding attachments)
+                inverted_index.add_email(
+                    {
+                        "id": email_data['id'],
+                        "subject": email_data["subject"],
+                        "from": email_data["from"],
+                        "to": email_data["to"],
+                        "cc": email_data["cc"],
+                        "body_text": email_data['body_text'],
+                        "body_html": email_data['body_html'],
+                    }
+                )
+                logger.debug(f"Added email {email_data['id']} to inverted index")
 
-            # Add to inverted search index (only metadata needed for indexing, excluding attachments)
-            inverted_index.add_email(
-                {
-                    "id": email_data['id'],
-                    "subject": email_data["subject"],
-                    "from": email_data["from"],
-                    "to": email_data["to"],
-                    "cc": email_data["cc"],
-                    "body_text": email_data['body_text'],
-                    "body_html": email_data['body_html'],
-                }
-            )
-            logger.debug(f"Added email {email_data['id']} to inverted index")
-
-        except Exception as e:
-            logger.error(f"Error processing message {key}: {e}", exc_info=True)
-            continue
+            except Exception as e:
+                logger.error(f"Error processing message {key}: {e}", exc_info=True)
+                continue
 
     # Close index files with closing brackets
     with open(index_file, "a", encoding="utf-8") as f:
