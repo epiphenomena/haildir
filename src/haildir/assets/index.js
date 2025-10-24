@@ -188,6 +188,7 @@ searchInput.addEventListener('keyup', (e) => {
     }
 });
 
-[fromFilter, toFilter, dateStart, dateEnd].forEach(element => {
+// Only attach change event to date filters since we want to maintain search button for from/to
+[dateStart, dateEnd].forEach(element => {
     element.addEventListener('change', filterEmails);
 });
