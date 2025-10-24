@@ -202,8 +202,8 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
 
     # Process each message with progress bar
     with click.progressbar(
-        maildir.iteritems(), 
-        length=total_messages, 
+        maildir.iteritems(),
+        length=total_messages,
         label='Processing emails',
         item_show_func=lambda x: f"Email {x[0] if x else ''}" if x else ""
     ) as bar:
@@ -219,13 +219,13 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
                 # Save email data to JSON file
                 email_file = emails_dir / f"{email_data['id']}.json"
                 with open(email_file, "w", encoding="utf-8") as f:
-                    json.dump(email_data, f, ensure_ascii=False, indent=2)
+                    json.dump(email_data, f, ensure_ascii=False, indent=None)
 
                 # Add to main index
                 with open(index_file, "a", encoding="utf-8") as f:
                     if not first_index_item:
                         f.write(",\n")
-                    json.dump(index_entry, f, ensure_ascii=False, indent=2)
+                    json.dump(index_entry, f, ensure_ascii=False, indent=None)
                     first_index_item = False
 
                 # Add to inverted search index (only metadata needed for indexing, excluding attachments)
