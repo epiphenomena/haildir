@@ -2,6 +2,7 @@ import click
 import mailbox
 import json
 from pathlib import Path
+import email as std_email
 from email.utils import parseaddr
 from datetime import datetime
 import hashlib
@@ -17,6 +18,158 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def extract_email_data(msg, key: str, attachments_dir: Path) -> dict:
+    """Extract and return email data from a message object."""
+    # Extract basic information
+    message_id = msg.get("Message-ID", "")
+    if not message_id:
+        # Generate a unique ID if Message-ID is missing
+        message_id = hashlib.md5(
+            f"{msg.get('From', '')}{msg.get('Date', '')}".encode()
+        ).hexdigest()
+
+    # Sanitize message_id for use as filename
+    safe_message_id = "".join(
+        c for c in message_id if c.isalnum() or c in ("-", "_")
+    ).rstrip()
+    if not safe_message_id:
+        safe_message_id = key  # Fallback to maildir key
+
+    # Parse headers
+    date_str = msg.get("Date", "")
+    try:
+        date_obj = (
+            datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
+            if date_str
+            else None
+        )
+        date_iso = date_obj.isoformat() if date_obj else ""
+    except ValueError:
+        # Handle common date format variations
+        try:
+            date_obj = (
+                datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
+                if date_str
+                else None
+            )
+            date_iso = date_obj.isoformat() if date_obj else ""
+        except ValueError:
+            date_iso = ""  # Unable to parse date
+
+    subject = msg.get("Subject", "")
+    if isinstance(subject, std_email.header.Header):
+        subject = str(subject)
+    from_addr = msg.get("From", "")
+    to_addr = msg.get("To", "")
+    cc_addr = msg.get("Cc", "")
+
+    # Extract addresses for autocomplete
+    addresses = set()
+    for addr in [from_addr, to_addr, cc_addr]:
+        if addr:
+            name, email = parseaddr(addr)
+            if email:
+                addresses.add(email.lower())
+
+    # Extract body content and attachments
+    body_text = ""
+    body_html = ""
+    attachments = []
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                try:
+                    payload = part.get_payload(decode=True)
+                    if isinstance(payload, bytes):
+                        body_text += payload.decode(
+                            part.get_content_charset() or "utf-8",
+                            errors="replace",
+                        )
+                    else:
+                        body_text += str(payload)
+                except Exception as e:
+                    logger.warning(f"Error decoding text/plain payload: {e}")
+            elif part.get_content_type() == "text/html":
+                try:
+                    payload = part.get_payload(decode=True)
+                    if isinstance(payload, bytes):
+                        body_html += payload.decode(
+                            part.get_content_charset() or "utf-8",
+                            errors="replace",
+                        )
+                    else:
+                        body_html += str(payload)
+                except Exception as e:
+                    logger.warning(f"Error decoding text/html payload: {e}")
+            elif part.get_content_disposition() == "attachment":
+                # Handle attachments
+                filename = part.get_filename()
+                if filename:
+                    # Generate a unique filename for the attachment
+                    attachment_filename = hashlib.md5(
+                        f"{safe_message_id}{filename}".encode()
+                    ).hexdigest() + filename[-4:]
+
+                    logger.debug(f"Processing attachment: {filename} for email {safe_message_id}")
+
+                    # Save attachment to disk
+                    attachment_path = attachments_dir / attachment_filename
+                    with open(attachment_path, "wb") as f:
+                        decoded_attachment = part.get_payload(decode=True)
+                        if decoded_attachment:
+                            f.write(decoded_attachment)
+                        else:
+                            logger.warn(f"Attachment Missing: {filename}")
+
+                    # Store attachment metadata
+                    attachments.append(
+                        {
+                            "filename": filename,
+                            "saved_filename": attachment_filename,
+                            "content_type": part.get_content_type(),
+                        }
+                    )
+                    logger.debug(f"Saved attachment: {attachment_filename}")
+    else:
+        if msg.get_content_type() == "text/plain":
+            body_text = msg.get_payload(decode=True).decode(
+                msg.get_content_charset() or "utf-8", errors="replace"
+            )
+        elif msg.get_content_type() == "text/html":
+            body_html = msg.get_payload(decode=True).decode(
+                msg.get_content_charset() or "utf-8", errors="replace"
+            )
+
+    # Create preview text (first 100 characters of body)
+    preview = (body_text or body_html)[:100].replace("\n", " ").strip()
+
+    # Create email data dict
+    email_data = {
+        "id": safe_message_id,
+        "date": date_iso,
+        "subject": subject,
+        "from": from_addr,
+        "to": to_addr,
+        "cc": cc_addr,
+        "body_text": body_text,
+        "body_html": body_html,
+        "attachments": attachments,
+    }
+
+    # Create index entry
+    index_entry = {
+        "id": safe_message_id,
+        "date": date_iso,
+        "subject": subject,
+        "from": from_addr,
+        "to": to_addr,
+        "cc": cc_addr,
+        "preview": preview,
+    }
+
+    return email_data, index_entry, addresses
 
 def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     """Parse Maildir and extract email data, building indexes incrementally."""
@@ -49,158 +202,25 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
 
     # Process each message
     processed_count = 0
-    for key, msg in maildir.items():
+    for key, msg in maildir.iteritems():
         processed_count += 1
-        if processed_count % 100 == 0:  # Log progress every 100 emails
+        if processed_count % 5000 == 0:
             logger.info(f"Processing email {processed_count}/{total_messages}")
 
         try:
-            # Extract basic information
-            message_id = msg.get("Message-ID", "")
-            if not message_id:
-                # Generate a unique ID if Message-ID is missing
-                message_id = hashlib.md5(
-                    f"{msg.get('From', '')}{msg.get('Date', '')}".encode()
-                ).hexdigest()
+            # Extract email data using the new function
+            email_data, index_entry, email_addresses = extract_email_data(msg, key, attachments_dir)
 
-            # Sanitize message_id for use as filename
-            safe_message_id = "".join(
-                c for c in message_id if c.isalnum() or c in ("-", "_")
-            ).rstrip()
-            if not safe_message_id:
-                safe_message_id = key  # Fallback to maildir key
 
-            # Parse headers
-            date_str = msg.get("Date", "")
-            try:
-                date_obj = (
-                    datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
-                    if date_str
-                    else None
-                )
-                date_iso = date_obj.isoformat() if date_obj else ""
-            except ValueError:
-                # Handle common date format variations
-                try:
-                    date_obj = (
-                        datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
-                        if date_str
-                        else None
-                    )
-                    date_iso = date_obj.isoformat() if date_obj else ""
-                except ValueError:
-                    date_iso = ""  # Unable to parse date
-
-            subject = msg.get("Subject", "")
-            from_addr = msg.get("From", "")
-            to_addr = msg.get("To", "")
-            cc_addr = msg.get("Cc", "")
-
-            # Extract addresses for autocomplete
-            for addr in [from_addr, to_addr, cc_addr]:
-                if addr:
-                    name, email = parseaddr(addr)
-                    if email:
-                        addresses.add(email.lower())
-
-            # Extract body content and attachments
-            body_text = ""
-            body_html = ""
-            attachments = []
-
-            if msg.is_multipart():
-                for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
-                        try:
-                            payload = part.get_payload(decode=True)
-                            if isinstance(payload, bytes):
-                                body_text += payload.decode(
-                                    part.get_content_charset() or "utf-8",
-                                    errors="replace",
-                                )
-                            else:
-                                body_text += str(payload)
-                        except Exception as e:
-                            logger.warning(f"Error decoding text/plain payload: {e}")
-                    elif part.get_content_type() == "text/html":
-                        try:
-                            payload = part.get_payload(decode=True)
-                            if isinstance(payload, bytes):
-                                body_html += payload.decode(
-                                    part.get_content_charset() or "utf-8",
-                                    errors="replace",
-                                )
-                            else:
-                                body_html += str(payload)
-                        except Exception as e:
-                            logger.warning(f"Error decoding text/html payload: {e}")
-                    elif part.get_content_disposition() == "attachment":
-                        # Handle attachments
-                        filename = part.get_filename()
-                        if filename:
-                            # Generate a unique filename for the attachment
-                            attachment_id = hashlib.md5(
-                                f"{safe_message_id}{filename}".encode()
-                            ).hexdigest()
-                            attachment_filename = f"{attachment_id}_{filename}"
-
-                            logger.debug(f"Processing attachment: {filename} for email {safe_message_id}")
-
-                            # Save attachment to disk
-                            attachment_path = attachments_dir / attachment_filename
-                            with open(attachment_path, "wb") as f:
-                                f.write(part.get_payload(decode=True))
-
-                            # Store attachment metadata
-                            attachments.append(
-                                {
-                                    "filename": filename,
-                                    "saved_filename": attachment_filename,
-                                    "content_type": part.get_content_type(),
-                                }
-                            )
-                            logger.debug(f"Saved attachment: {attachment_filename}")
-            else:
-                if msg.get_content_type() == "text/plain":
-                    body_text = msg.get_payload(decode=True).decode(
-                        msg.get_content_charset() or "utf-8", errors="replace"
-                    )
-                elif msg.get_content_type() == "text/html":
-                    body_html = msg.get_payload(decode=True).decode(
-                        msg.get_content_charset() or "utf-8", errors="replace"
-                    )
-
-            # Create preview text (first 100 characters of body)
-            preview = (body_text or body_html)[:100].replace("\n", " ").strip()
+            # Update the global addresses set with extracted addresses
+            addresses.update(email_addresses)
 
             # Save email data to JSON file
-            email_data = {
-                "id": safe_message_id,
-                "date": date_iso,
-                "subject": subject,
-                "from": from_addr,
-                "to": to_addr,
-                "cc": cc_addr,
-                "body_text": body_text,
-                "body_html": body_html,
-                "attachments": attachments,
-            }
-
-            email_file = emails_dir / f"{safe_message_id}.json"
+            email_file = emails_dir / f"{email_data['id']}.json"
             with open(email_file, "w", encoding="utf-8") as f:
                 json.dump(email_data, f, ensure_ascii=False, indent=2)
 
             # Add to main index
-            index_entry = {
-                "id": safe_message_id,
-                "date": date_iso,
-                "subject": subject,
-                "from": from_addr,
-                "to": to_addr,
-                "cc": cc_addr,
-                "preview": preview,
-            }
-
             with open(index_file, "a", encoding="utf-8") as f:
                 if not first_index_item:
                     f.write(",\n")
@@ -210,16 +230,16 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
             # Add to inverted search index (only metadata needed for indexing, excluding attachments)
             inverted_index.add_email(
                 {
-                    "id": safe_message_id,
-                    "subject": subject,
-                    "from": from_addr,
-                    "to": to_addr,
-                    "cc": cc_addr,
-                    "body_text": body_text,
-                    "body_html": body_html,
+                    "id": email_data['id'],
+                    "subject": email_data["subject"],
+                    "from": email_data["from"],
+                    "to": email_data["to"],
+                    "cc": email_data["cc"],
+                    "body_text": email_data['body_text'],
+                    "body_html": email_data['body_html'],
                 }
             )
-            logger.debug(f"Added email {safe_message_id} to inverted index")
+            logger.debug(f"Added email {email_data['id']} to inverted index")
 
         except Exception as e:
             logger.error(f"Error processing message {key}: {e}", exc_info=True)
@@ -239,7 +259,9 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     # Log completion statistics
     email_count = len([f for f in emails_dir.iterdir() if f.is_file()])
     address_count = len(addresses)
-    logger.info(f"Completed processing. Generated {email_count} email entries and {address_count} unique addresses.")
+    logger.info(
+        f"Completed processing. Generated {email_count} email entries and {address_count} unique addresses."
+    )
 
 
 def copy_assets(output_path: Path) -> None:
