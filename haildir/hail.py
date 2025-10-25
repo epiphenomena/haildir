@@ -78,11 +78,19 @@ class Hail:
             # If already exists, use existing index
             self.idx = self_cls.d[self.id]
 
-    @classmethod
     @property
     def id(self):
         """Return the sanitized message ID."""
         return self._id
+
+    @classmethod
+    def from_maildir(cls, msg):
+        if msg.get("Message-ID", "") in cls.d:
+            # Return existing instance if already processed
+            existing_id = msg.get("Message-ID", "")
+            return cls.d[existing_id]
+        else:
+            return cls(msg)
 
     @property
     def from_addr(self):
@@ -93,6 +101,47 @@ class Hail:
     def to_addr(self):
         """Return the to address."""
         return self.msg.get("To", "")
+
+    @property
+    def cc_addr(self):
+        """Return the cc address."""
+        return self.msg.get("Cc", "")
+
+    @property
+    def subject(self):
+        """Return the subject of the email."""
+        subject = self.msg.get("Subject", "")
+        if isinstance(subject, std_email.header.Header):
+            subject = str(subject)
+        return subject
+
+    @property
+    def date(self):
+        """Return the parsed date in ISO format."""
+        date_str = self.msg.get("Date", "")
+        date_obj = None
+
+        if date_str:
+            try:
+                # Clean the datetime string by removing unwanted suffixes before parsing
+                cleaned_date_str = clean_datetime_string(date_str)
+                # Use dateutil to parse the date string, which handles many formats automatically
+                date_obj = dateutil_parser.parse(cleaned_date_str)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Unable to parse date: {date_str}. Error: {e}")
+
+        return date_obj.isoformat() if date_obj else ""
+
+    @property
+    def addresses(self):
+        """Return the set of addresses for autocomplete."""
+        addresses = set()
+        for addr in [self.from_addr, self.to_addr, self.cc_addr]:
+            if addr:
+                name, email = parseaddr(addr)
+                if email:
+                    addresses.add(email.lower())
+        return addresses
 
     @property
     def body_text(self):
@@ -125,10 +174,34 @@ class Hail:
         return body_text
 
     @property
-    def preview(self):
-        """Return preview text (first 100 characters of body)."""
-        body_content = self.body_text or self.body_html
-        return body_content[:100].replace("\n", " ").strip()
+    def body_html(self):
+        """Return the HTML body of the email."""
+        body_html = ""
+        if self.msg.is_multipart():
+            for part in self.msg.walk():
+                if part.get_content_type() == "text/html":
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if isinstance(payload, bytes):
+                            body_html += payload.decode(
+                                part.get_content_charset() or "utf-8",
+                                errors="replace",
+                            )
+                        else:
+                            body_html += str(payload)
+                    except Exception as e:
+                        logger.warning(f"Error decoding text/html payload: {e}")
+        else:
+            if self.msg.get_content_type() == "text/html":
+                payload = self.msg.get_payload(decode=True)
+                if isinstance(payload, bytes):
+                    body_html = payload.decode(
+                        self.msg.get_content_charset() or "utf-8",
+                        errors="replace"
+                    )
+                else:
+                    body_html = str(payload)
+        return body_html
 
     @property
     def attachments(self):
@@ -158,34 +231,10 @@ class Hail:
         return attachments
 
     @property
-    def cc_addr(self):
-        """Return the cc address."""
-        return self.msg.get("Cc", "")
-
-    @property
-    def subject(self):
-        """Return the subject of the email."""
-        subject = self.msg.get("Subject", "")
-        if isinstance(subject, std_email.header.Header):
-            subject = str(subject)
-        return subject
-
-    @property
-    def date(self):
-        """Return the parsed date in ISO format."""
-        date_str = self.msg.get("Date", "")
-        date_obj = None
-
-        if date_str:
-            try:
-                # Clean the datetime string by removing unwanted suffixes before parsing
-                cleaned_date_str = clean_datetime_string(date_str)
-                # Use dateutil to parse the date string, which handles many formats automatically
-                date_obj = dateutil_parser.parse(cleaned_date_str)
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Unable to parse date: {date_str}. Error: {e}")
-
-        return date_obj.isoformat() if date_obj else ""
+    def preview(self):
+        """Return preview text (first 100 characters of body)."""
+        body_content = self.body_text or self.body_html
+        return body_content[:100].replace("\n", " ").strip()
 
 
 
