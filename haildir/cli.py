@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import shutil
 import logging
-from .hail import Hail
+from . import hail
 from .search import InvertedIndex
 
 # Configure logging
@@ -54,32 +54,28 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
         for key, msg in bar:
             try:
                 # Create Hail instance for the message
-                hail_instance = Hail.from_maildir(msg)
+                try:
+                    h = hail.Hail.from_maildir(msg)
+                except hail.EmailAlreadyProcessed:
+                    continue
 
-                # Check if this email ID has already been processed to avoid duplicates
-                # The Hail class automatically handles duplicate detection via class-level properties
-                if hail_instance.idx == len(Hail.get_id_list()) - 1:  # Only process if it's a new email
-                    # Update the global addresses set with extracted addresses
-                    addresses.update(hail_instance.addresses)
+                # Update the global addresses set with extracted addresses
+                addresses.update(h.addresses)
 
-                    # Save email data to JSON file
-                    email_file = emails_dir / f"{hail_instance.id}.json"
-                    with open(email_file, "w", encoding="utf-8") as f:
-                        f.write(hail_instance.to_json())
+                # Save attachments if any
+                h.save_attachments(attachments_dir)
 
-                    # Save attachments if any
-                    hail_instance.save_attachments(attachments_dir)
+                h.save(emails_dir)
 
-                    # Add to main index
-                    with open(index_file, "a", encoding="utf-8") as f:
-                        if not first_index_item:
-                            f.write(",\n")
-                        json.dump(hail_instance.index_data, f, ensure_ascii=False, indent=None)
-                        first_index_item = False
+                # Add to main index
+                with open(index_file, "a", encoding="utf-8") as f:
+                    if not first_index_item:
+                        f.write(",\n")
+                    json.dump(h.index_data, f, ensure_ascii=False, indent=None)
+                    first_index_item = False
 
                     # Add to inverted search index
-                    inverted_index.add_email(hail_instance.search_entry())
-                    logger.debug(f"Added email {hail_instance.id} to inverted index")
+                    inverted_index.add_email(h)
 
             except Exception as e:
                 logger.error(f"Error processing message {key}: {e}", exc_info=True)
@@ -94,10 +90,11 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
         json.dump(list(addresses), f, ensure_ascii=False, indent=None)
 
     # Finalize the inverted index
-    inverted_index.finalize()
+    inverted_index.save()
+    hail.Hail.save_id_idx()
 
     # Log completion statistics
-    email_count = len([f for f in emails_dir.iterdir() if f.is_file()])
+    email_count = len(hail.Hail.ls)
     address_count = len(addresses)
     logger.info(
         f"Completed processing. Generated {email_count} email entries and {address_count} unique addresses."
