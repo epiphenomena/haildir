@@ -2,14 +2,27 @@ import click
 import mailbox
 import json
 from pathlib import Path
+import re
 import email as std_email
 from email.utils import parseaddr
 import hashlib
 import shutil
 import logging
-import re
 from dateutil import parser as dateutil_parser
 from .search import InvertedIndex
+
+def clean_datetime_string(date_str):
+    """Clean datetime string by removing unwanted suffixes before parsing."""
+    # Pattern to capture content in parentheses at the end (like "(GMT+00:00)")
+    parentheses_pattern = r"\([^)]*\)$"
+    # Pattern to capture alphabetic text at the end (like "Pacific Standard Time")
+    text_end_pattern = r"[a-zA-Z][a-zA-Z\s]+$"
+    
+    # Remove parentheses content at the end
+    cleaned = re.sub(parentheses_pattern, "", date_str)
+    # Remove trailing alphabetic text
+    cleaned = re.sub(text_end_pattern, "", cleaned)
+    return cleaned.strip()
 
 # Configure logging
 logging.basicConfig(
@@ -43,8 +56,10 @@ def extract_email_data(msg, key: str, attachments_dir: Path) -> dict:
 
     if date_str:
         try:
+            # Clean the datetime string by removing unwanted suffixes before parsing
+            cleaned_date_str = clean_datetime_string(date_str)
             # Use dateutil to parse the date string, which handles many formats automatically
-            date_obj = dateutil_parser.parse(date_str)
+            date_obj = dateutil_parser.parse(cleaned_date_str)
         except (ValueError, TypeError) as e:
             logger.warning(f"Unable to parse date: {date_str}. Error: {e}")
 
