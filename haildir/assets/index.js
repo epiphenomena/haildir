@@ -139,8 +139,11 @@ function showNextBatch() {
             attachmentInfo = '<div class="email-attachments">📎 Attachment</div>';
         }
         
+        // Add class for emails from me
+        const fromMeClass = email.from_me ? ' from-me' : '';
+        
         return `
-            <li class="email-item" data-id="${email.id}">
+            <li class="email-item${fromMeClass}" data-id="${email.id}">
                 <div class="email-subject">${escapeHtml(email.subject)}</div>
                 <div class="email-from">From: ${escapeHtml(email.from)}</div>
                 <div class="email-date">${formatDate(email.date)}</div>
@@ -182,8 +185,8 @@ function updateShowMoreButtonVisibility() {
 // Format date for display
 function formatDate(dateString) {
     if (!dateString) return 'Unknown date';
-    const date = new Date(dateString);
-    return date.toLocaleString();
+    // The backend now provides date in YYYY-MM-DD HH:mm format, so return as is
+    return dateString;
 }
 
 // Escape HTML to prevent XSS
@@ -275,18 +278,123 @@ function filterEmails() {
 
 // Initialize autocomplete for address fields
 function initAutocomplete() {
-    // Simple autocomplete implementation
-    [fromFilter, toFilter].forEach(input => {
-        input.addEventListener('input', () => {
-            const value = input.value.toLowerCase();
-            if (value.length > 2) {
-                const matches = addresses.filter(addr => addr.includes(value));
-                // In a real implementation, you would show these matches in a dropdown
-                // For simplicity, we're just logging them
-                console.log('Matches for', value, ':', matches);
+    // Create autocomplete container if it doesn't exist
+    const autocompleteContainer = document.createElement('div');
+    autocompleteContainer.id = 'autocomplete-container';
+    autocompleteContainer.style.cssText = `
+        position: absolute;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    `;
+    document.body.appendChild(autocompleteContainer);
+
+    // Function to create autocomplete for a specific input element
+    function createAutocomplete(inputElement) {
+        let currentFocus = -1;
+
+        // Handle input events
+        inputElement.addEventListener('input', function(e) {
+            const value = this.value.toLowerCase();
+            closeAllLists();
+            
+            if (!value || value.length < 2) return false;
+
+            currentFocus = -1;
+
+            const matches = addresses.filter(addr => 
+                addr.toLowerCase().includes(value)
+            ).slice(0, 10); // Limit to 10 matches
+
+            if (matches.length === 0) return false;
+
+            // Create autocomplete items container
+            const list = document.createElement('div');
+            list.setAttribute('class', 'autocomplete-items');
+            list.setAttribute('id', this.id + '-autocomplete-list');
+
+            // Add matches to the list
+            matches.forEach((addr, index) => {
+                const item = document.createElement('div');
+                item.innerHTML = `<strong>${addr.substring(0, value.length)}</strong>${addr.substring(value.length)}`;
+                item.innerHTML += `<input type="hidden" value="${addr}">`;
+                item.addEventListener('click', function() {
+                    inputElement.value = this.getElementsByTagName('input')[0].value;
+                    closeAllLists();
+                });
+                list.appendChild(item);
+            });
+
+            autocompleteContainer.appendChild(list);
+            autocompleteContainer.style.display = 'block';
+        });
+
+        // Handle keyboard navigation
+        inputElement.addEventListener('keydown', function(e) {
+            const items = document.getElementById(this.id + '-autocomplete-list');
+            if (!items) return;
+
+            const autocompleteItems = items.getElementsByTagName('div');
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                currentFocus++;
+                addActive(autocompleteItems);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                currentFocus--;
+                addActive(autocompleteItems);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentFocus > -1 && autocompleteItems) {
+                    autocompleteItems[currentFocus].click();
+                }
             }
         });
-    });
+
+        // Close autocomplete when clicking outside
+        document.addEventListener('click', function(e) {
+            if (e.target !== inputElement) {
+                closeAllLists();
+            }
+        });
+    }
+
+    // Helper function to add active class to autocomplete item
+    function addActive(items) {
+        if (!items) return false;
+        removeActive(items);
+        if (currentFocus >= items.length) currentFocus = 0;
+        if (currentFocus < 0) currentFocus = (items.length - 1);
+        items[currentFocus].classList.add('autocomplete-active');
+    }
+
+    // Helper function to remove active class from autocomplete items
+    function removeActive(items) {
+        for (let i = 0; i < items.length; i++) {
+            items[i].classList.remove('autocomplete-active');
+        }
+    }
+
+    // Close all autocomplete lists
+    function closeAllLists(elmnt) {
+        const items = document.getElementsByClassName('autocomplete-items');
+        for (let i = 0; i < items.length; i++) {
+            if (elmnt !== items[i] && elmnt !== fromFilter && elmnt !== toFilter) {
+                items[i].parentNode.removeChild(items[i]);
+            }
+        }
+        autocompleteContainer.style.display = 'none';
+    }
+
+    // Initialize autocomplete for both input fields
+    createAutocomplete(fromFilter);
+    createAutocomplete(toFilter);
 }
 
 // Event listeners

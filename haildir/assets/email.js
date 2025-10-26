@@ -74,8 +74,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Format date for display
 function formatDate(dateString) {
     if (!dateString) return 'Unknown date';
-    const date = new Date(dateString);
-    return date.toLocaleString();
+    // The backend now provides date in YYYY-MM-DD HH:mm format, so return as is
+    return dateString;
 }
 
 // Escape HTML to prevent XSS

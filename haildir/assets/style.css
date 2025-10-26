@@ -116,6 +116,11 @@ body {
   background-color: #fff9e6;
 }
 
+.email-item.from-me {
+  background-color: #e6f7ff;
+  border-left: 4px solid #1890ff;
+}
+
 .email-subject {
   font-weight: bold;
   margin-bottom: 5px;
