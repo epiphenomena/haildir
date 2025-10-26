@@ -224,6 +224,7 @@ class Hail:
             "from": self.from_addr,
             "to": self.to_addr,
             "cc": self.cc_addr,
+            "from_me": self.from_me,
             "body_text": self.body_text,
             "body_html": self.body_html,
             "attachments": self._attachments,
