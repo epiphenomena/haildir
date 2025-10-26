@@ -2,3 +2,4 @@
 test/output/
 __pycache__
 *.egg-info
+config.json
