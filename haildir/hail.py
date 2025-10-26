@@ -7,6 +7,23 @@ import hashlib
 import logging
 from dateutil import parser as dateutil_parser
 
+# Read user email addresses from config.json if it exists
+def get_user_emails():
+    """Read user email addresses from config.json in the root directory."""
+    config_path = Path(__file__).parent.parent / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                return set(config.get("user_emails", []))  # Return a set of user emails
+        except (json.JSONDecodeError, FileNotFoundError):
+            logging.warning(f"Could not read config.json: {config_path}")
+            return set()
+    return set()
+
+# Read user emails once at module load time
+USER_EMAILS = get_user_emails()
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -125,6 +142,11 @@ class Hail:
             for addr in addrs:
                 addresses.add(addr)
         return addresses
+
+    @property
+    def from_me(self):
+        """Return whether the email is from one of the user's addresses."""
+        return self.from_addr in USER_EMAILS
 
     @property
     def body_text(self):
