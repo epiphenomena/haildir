@@ -54,7 +54,7 @@ class Hail:
             self.idx = idx
         else:
             # If already exists, use existing index
-            self.idx = self_cls.d[self.id]
+            self.idx = self_cls.d[self.original_id]
 
     @classmethod
     def from_maildir(cls, msg):
@@ -88,7 +88,7 @@ class Hail:
 
     @property
     def date(self):
-        """Return the parsed date in ISO format."""
+        """Return the parsed date in YYYY-MM-DD HH:mm format."""
         def clean_datetime_string(date_str):
             """Clean datetime string by removing unwanted suffixes before parsing."""
             # Pattern to capture content in parentheses at the end (like "(GMT+00:00)")
@@ -114,7 +114,7 @@ class Hail:
             except (ValueError, TypeError) as e:
                 logger.warning(f"Unable to parse date: {date_str}. Error: {e}")
 
-        return date_obj.isoformat() if date_obj else ""
+        return date_obj.strftime("%Y-%m-%d %H:%M") if date_obj else ""
 
     @property
     def addresses(self):
