@@ -240,6 +240,7 @@ class Hail:
             "from": self.from_addr,
             "to": self.to_addr,
             "cc": self.cc_addr,
+            "from_me": self.from_me,
             "preview": self.preview,
             "has_attachments": len(self._attachments) > 0,
             "attachment_count": len(self._attachments),
