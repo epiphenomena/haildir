@@ -91,7 +91,7 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
 
     # Finalize the inverted index
     inverted_index.save()
-    hail.Hail.save_id_idx()
+    hail.Hail.save_id_idx(output_path)
 
     # Log completion statistics
     email_count = len(hail.Hail.ls)
