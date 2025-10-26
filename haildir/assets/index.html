@@ -20,11 +20,11 @@
         <div class="filters">
             <div class="filter-group">
                 <label for="from-filter">From:</label>
-                <input type="text" id="from-filter" placeholder="Filter by sender">
+                <input type="text" id="from-filter" placeholder="Filter by sender" list="email-datalist">
             </div>
             <div class="filter-group">
                 <label for="to-filter">To:</label>
-                <input type="text" id="to-filter" placeholder="Filter by recipient">
+                <input type="text" id="to-filter" placeholder="Filter by recipient" list="email-datalist">
             </div>
             <div class="filter-group">
                 <label for="date-start">Start Date:</label>
@@ -39,6 +39,10 @@
                 <input type="checkbox" id="has-attachment">
             </div>
         </div>
+        
+        <datalist id="email-datalist">
+            <!-- Email addresses will be populated by JavaScript -->
+        </datalist>
         
         <div class="results-count" id="results-count">
             <!-- Results count will be populated by JavaScript -->

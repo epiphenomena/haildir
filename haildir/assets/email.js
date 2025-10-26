@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     try {
-        // Load email data
+        // Load email data using the index number (which is what we pass in the URL now)
         const emailResponse = await fetch(`emails/${emailId}.json`);
         if (!emailResponse.ok) {
             throw new Error(`Email not found: ${emailId}`);
