@@ -261,13 +261,22 @@ function filterEmails() {
     // Apply additional filters
     filtered = filtered.filter(email => {
         // From filter
-        if (fromTerm && !email.from.toLowerCase().includes(fromTerm)) {
-            return false;
+        if (fromTerm) {
+            // Ensure email.from is a string for comparison
+            const fromAddress = email.from ? email.from.toString() : '';
+            if (!fromAddress.toLowerCase().includes(fromTerm)) {
+                return false;
+            }
         }
         
         // To filter
-        if (toTerm && !email.to.toLowerCase().includes(toTerm)) {
-            return false;
+        if (toTerm) {
+            // email.to is an array, check if any address in the array contains the search term
+            const toAddresses = Array.isArray(email.to) ? email.to : [email.to];
+            const hasMatchingTo = toAddresses.some(addr => addr && addr.toLowerCase().includes(toTerm));
+            if (!hasMatchingTo) {
+                return false;
+            }
         }
         
         // Date range filter
