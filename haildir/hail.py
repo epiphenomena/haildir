@@ -88,12 +88,22 @@ class Hail:
     @property
     def to_addr(self):
         """Return the to address."""
-        return [parseaddr(addr)[1].lower() for addr in self.msg.get("To", "")]
+        to_header = self.msg.get("To", "")
+        if to_header:
+            # Split multiple addresses by comma and parse each one
+            addresses = [addr.strip() for addr in to_header.split(',')]
+            return [parseaddr(addr)[1].lower() for addr in addresses if parseaddr(addr)[1]]
+        return []
 
     @property
     def cc_addr(self):
         """Return the cc address."""
-        return [parseaddr(addr)[1].lower() for addr in self.msg.get("Cc", "")]
+        cc_header = self.msg.get("Cc", "")
+        if cc_header:
+            # Split multiple addresses by comma and parse each one
+            addresses = [addr.strip() for addr in cc_header.split(',')]
+            return [parseaddr(addr)[1].lower() for addr in addresses if parseaddr(addr)[1]]
+        return []
 
     @property
     def subject(self):
