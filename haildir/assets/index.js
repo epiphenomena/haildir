@@ -196,6 +196,15 @@ function formatDate(dateString) {
 
 // Escape HTML to prevent XSS
 function escapeHtml(text) {
+    // Convert arrays to strings if needed
+    if (Array.isArray(text)) {
+        text = text.join(', ');
+    }
+    
+    if (typeof text !== 'string') {
+        text = String(text || '');
+    }
+    
     return text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")

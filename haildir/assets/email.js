@@ -22,10 +22,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('email-subject').textContent = email.subject;
         document.getElementById('email-from').innerHTML = `<strong>From:</strong> ${escapeHtml(email.from)}`;
         document.getElementById('email-date').innerHTML = `<strong>Date:</strong> ${formatDate(email.date)}`;
-        document.getElementById('email-to').innerHTML = `<strong>To:</strong> ${escapeHtml(email.to)}`;
+        document.getElementById('email-to').innerHTML = `<strong>To:</strong> ${escapeHtml(email.to ? Array.isArray(email.to) ? email.to.join(', ') : email.to : '')}`;
         
-        if (email.cc) {
-            document.getElementById('email-cc').innerHTML = `<strong>Cc:</strong> ${escapeHtml(email.cc)}`;
+        if (email.cc && email.cc.length > 0) {
+            document.getElementById('email-cc').innerHTML = `<strong>Cc:</strong> ${escapeHtml(Array.isArray(email.cc) ? email.cc.join(', ') : email.cc)}`;
             document.getElementById('email-cc').style.display = 'block';
         } else {
             document.getElementById('email-cc').style.display = 'none';
@@ -80,6 +80,15 @@ function formatDate(dateString) {
 
 // Escape HTML to prevent XSS
 function escapeHtml(text) {
+    // Convert arrays to strings if needed
+    if (Array.isArray(text)) {
+        text = text.join(', ');
+    }
+    
+    if (typeof text !== 'string') {
+        text = String(text || '');
+    }
+    
     return text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
