@@ -69,6 +69,49 @@ body {
   border-radius: 4px;
 }
 
+.search-status {
+  margin-bottom: 15px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background-color: #fff9e6;
+  border: 1px solid #f0e0b0;
+  color: #665;
+  font-size: 0.95em;
+}
+
+.search-status[hidden] {
+  display: none;
+}
+
+/* Shown while the archive is loading or a search is running */
+.search-status.busy {
+  background-color: #eef5ff;
+  border-color: #b8d4f5;
+  color: #24507f;
+}
+
+.search-status.busy::before {
+  content: "";
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 8px;
+  vertical-align: -1px;
+  border: 2px solid #b8d4f5;
+  border-top-color: #24507f;
+  border-radius: 50%;
+  animation: haildir-spin 0.7s linear infinite;
+}
+
+@keyframes haildir-spin {
+  to { transform: rotate(360deg); }
+}
+
+.search-box button:disabled {
+  background-color: #9bc4ef;
+  cursor: default;
+}
+
 .results-count {
   margin-bottom: 15px;
   padding: 8px 0;

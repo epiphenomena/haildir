@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import logging
 from . import hail
+from . import search
 from .search import InvertedIndex
 
 # Configure logging
@@ -231,7 +232,7 @@ def load_state(output_path: Path) -> tuple[bool, set, int, dict]:
     return True, addresses, initial_count, sources
 
 
-def parse_maildir(maildir_path: Path, output_path: Path) -> None:
+def parse_maildir(maildir_path: Path, output_path: Path, result_limit: int) -> None:
     """Parse Maildir and extract email data, building indexes incrementally."""
     discard_temp_files(output_path)
     incremental, addresses, initial_count, sources = load_state(output_path)
@@ -259,7 +260,9 @@ def parse_maildir(maildir_path: Path, output_path: Path) -> None:
     new_sources = {}
 
     index_writer = IndexWriter(output_path / "index.json", incremental)
-    inverted_index = InvertedIndex(output_path, load_existing=incremental)
+    inverted_index = InvertedIndex(
+        output_path, load_existing=incremental, result_limit=result_limit
+    )
 
     added = 0
     rebuilt = 0
@@ -384,7 +387,19 @@ def copy_assets(output_path: Path) -> None:
     is_flag=True,
     help="Clear the previously generated files from the output directory and build everything again.",
 )
-def main(maildir_path: str, output_path: str, rebuild: bool) -> None:
+@click.option(
+    "--max-postings",
+    "result_limit",
+    type=click.IntRange(min=1),
+    default=search.RESULT_LIMIT,
+    show_default=True,
+    help=(
+        "Drop a word from the search index once it appears in this many emails. "
+        "Raising it makes common words searchable at the cost of a larger "
+        "search_index.json; it only takes effect with --rebuild."
+    ),
+)
+def main(maildir_path: str, output_path: str, rebuild: bool, result_limit: int) -> None:
     """
     Convert a Maildir archive to a static, searchable HTML site.
 
@@ -408,7 +423,7 @@ def main(maildir_path: str, output_path: str, rebuild: bool) -> None:
 
     # Parse maildir
     logger.info("Starting email parsing...")
-    parse_maildir(maildir_path_obj, output_path_obj)
+    parse_maildir(maildir_path_obj, output_path_obj, result_limit)
     logger.info("Email parsing completed.")
 
     # Copy assets

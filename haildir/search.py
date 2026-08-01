@@ -9,7 +9,13 @@ from . import hail
 RESULT_LIMIT = 500
 
 def tokenize(text: str) -> List[str]:
-    """Tokenize text into words, converting to lowercase and removing punctuation."""
+    """
+    Tokenize text into words, converting to lowercase and removing punctuation.
+
+    The client tokenizes the search box the same way (see `tokenize` in
+    index.js). The two have to agree: a term the client does not split the way
+    this does can never match a key in the index.
+    """
     # Convert to lowercase and split on whitespace and punctuation
     words = re.findall(r'\b[a-zA-Z0-9]+\b', text.lower())
     return words
@@ -17,9 +23,11 @@ def tokenize(text: str) -> List[str]:
 class InvertedIndex:
     """An inverted index that can be built incrementally."""
 
-    def __init__(self, output_path: Path, load_existing: bool = False):
+    def __init__(self, output_path: Path, load_existing: bool = False,
+                 result_limit: int = RESULT_LIMIT):
         self.output_path = output_path
         self.index_file = output_path / "search_index.json"
+        self.result_limit = result_limit
         self.inverted_index: Dict[str, Set[int]] = collections.defaultdict(set)
         # Words that matched too many emails to be worth indexing. They are
         # stored in the index file as empty posting lists, which the client
@@ -68,7 +76,7 @@ class InvertedIndex:
         # Convert sets to lists for JSON serialization
         serializable_index = {}
         for word, email_ids in self.inverted_index.items():
-            if len(email_ids) < RESULT_LIMIT:
+            if len(email_ids) < self.result_limit:
                 serializable_index[word] = sorted(email_ids)
             else:
                 self.dropped.add(word)

@@ -4,66 +4,176 @@ let addresses = [];
 let searchIndex = {};
 let idMapping = {};
 
+// Set once every index has loaded; searching before that would quietly report
+// no results because searchIndex is still empty.
+let dataReady = false;
+
 // Create a map for quick lookup of email metadata by ID
 let emailMap = new Map();
 
 // DOM elements
-const emailList = document.getElementById('email-list');
-const searchInput = document.getElementById('search-input');
-const searchButton = document.getElementById('search-button');
-const fromFilter = document.getElementById('from-filter');
-const toFilter = document.getElementById('to-filter');
-const dateStart = document.getElementById('date-start');
-const dateEnd = document.getElementById('date-end');
-const hasAttachment = document.getElementById('has-attachment');
+let emailList, searchInput, searchButton, fromFilter, toFilter;
+let dateStart, dateEnd, hasAttachment, searchStatus;
+
+// Split a search box entry the same way the indexer split the emails. The two
+// have to agree: `deep.thought@example.com` is stored as four separate words,
+// so splitting the query on whitespace alone would look up one long key that is
+// never in the index and report no results.
+function tokenize(text) {
+    return text.toLowerCase().match(/[a-z0-9]+/g) || [];
+}
+
+// Look a query up in the inverted index.
+//
+// Returns the set of email indexes matching *every* word, along with the words
+// that could not be used. `ids` is null when the query places no constraint at
+// all, which is not the same as matching nothing.
+//
+// A word maps to an empty posting list when the build found it in more emails
+// than --max-postings allows, so its real list was never written. Such a word
+// cannot narrow anything and is reported rather than silently treated as a word
+// that matches nothing.
+function searchIds(term, index) {
+    const words = tokenize(term);
+    const dropped = [];
+    const unknown = [];
+    let matched = null;
+
+    for (const word of words) {
+        const posting = index[word];
+
+        if (posting === undefined) {
+            // No email holds this word, so nothing can hold all of them
+            unknown.push(word);
+            matched = new Set();
+            continue;
+        }
+
+        if (posting.length === 0) {
+            dropped.push(word);
+            continue;
+        }
+
+        if (matched === null) {
+            matched = new Set(posting);
+        } else {
+            matched = new Set(posting.filter(id => matched.has(id)));
+        }
+    }
+
+    return { words, dropped, unknown, ids: matched };
+}
+
+// Describe anything the query asked for that the index could not answer, so a
+// short result list is not mistaken for a complete one.
+function searchNotes(result) {
+    const notes = [];
+    if (result.unknown.length > 0) {
+        notes.push(`No email contains ${result.unknown.map(w => `"${w}"`).join(', ')}.`);
+    }
+    if (result.dropped.length > 0) {
+        notes.push(
+            `${result.dropped.map(w => `"${w}"`).join(', ')} ` +
+            `${result.dropped.length === 1 ? 'is' : 'are'} too common to be indexed, ` +
+            `so ${result.dropped.length === 1 ? 'it was' : 'they were'} ignored.`
+        );
+    }
+    return notes.join(' ');
+}
+
+// Node can load this file to exercise the search without a browser; nothing
+// below this point runs there (see the guard on the DOMContentLoaded hook).
+const inBrowser = typeof document !== 'undefined';
+if (!inBrowser && typeof module !== 'undefined' && module.exports) {
+    module.exports = { tokenize, searchIds, searchNotes };
+}
+
+function setStatus(message, busy) {
+    if (!searchStatus) return;
+    searchStatus.textContent = message;
+    searchStatus.hidden = !message;
+    searchStatus.classList.toggle('busy', Boolean(busy));
+}
+
+// Give the browser a chance to actually paint the status before the main thread
+// is tied up. requestAnimationFrame fires *before* the paint, so it takes two.
+function painted() {
+    return new Promise(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+}
+
+async function loadJson(url, label) {
+    setStatus(`Loading ${label}…`, true);
+    await painted();
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Could not load ${url}: ${response.status}`);
+    }
+    return response.json();
+}
 
 // Load data on page load
-document.addEventListener('DOMContentLoaded', async () => {
+if (inBrowser) document.addEventListener('DOMContentLoaded', async () => {
+    emailList = document.getElementById('email-list');
+    searchInput = document.getElementById('search-input');
+    searchButton = document.getElementById('search-button');
+    fromFilter = document.getElementById('from-filter');
+    toFilter = document.getElementById('to-filter');
+    dateStart = document.getElementById('date-start');
+    dateEnd = document.getElementById('date-end');
+    hasAttachment = document.getElementById('has-attachment');
+    searchStatus = document.getElementById('search-status');
+
+    searchButton.addEventListener('click', runSearch);
+    searchInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            runSearch();
+        }
+    });
+
     try {
         // Load main index
-        const indexResponse = await fetch('index.json');
-        indexData = await indexResponse.json();
-        
+        indexData = await loadJson('index.json', 'email list');
+
         // Create email map for quick lookup
         indexData.forEach(email => {
             emailMap.set(email.id, email);
         });
-        
-        // Load search index
-        const searchIndexResponse = await fetch('search_index.json');
-        searchIndex = await searchIndexResponse.json();
-        
-        // Load ID mapping
-        const idMappingResponse = await fetch('id_mapping.json');
-        idMapping = await idMappingResponse.json();
-        
-        // Load addresses for autocomplete
-        const addressesResponse = await fetch('addresses.json');
-        addresses = await addressesResponse.json();
-        
+
+        // The largest file by far, so it gets its own message
+        searchIndex = await loadJson('search_index.json', 'search index');
+
+        idMapping = await loadJson('id_mapping.json', 'message ids');
+        addresses = await loadJson('addresses.json', 'addresses');
+
         // Initialize autocomplete
         initAutocomplete();
-        
+
+        dataReady = true;
+        setStatus('', false);
+
         // Display all emails initially
         displayEmails(indexData);
     } catch (error) {
         console.error('Error loading data:', error);
+        setStatus(`Error loading email data: ${error.message}`, false);
         emailList.innerHTML = '<li>Error loading email data</li>';
     }
 });
 
 // Sort emails by date (newest first)
 function sortEmailsByDate(emails) {
-    return emails.sort((a, b) => {
+    return emails.slice().sort((a, b) => {
         // Convert date strings to Date objects for comparison
         const dateA = a.date ? new Date(a.date) : new Date(0);  // Use epoch date for missing dates
         const dateB = b.date ? new Date(b.date) : new Date(0);
-        
+
         // Compare dates in descending order (newest first)
         // If either date is invalid, put it at the end
         if (isNaN(dateA.getTime())) return 1;
         if (isNaN(dateB.getTime())) return -1;
-        
+
         if (dateB > dateA) return 1;
         if (dateB < dateA) return -1;
         return 0;
@@ -81,29 +191,29 @@ function displayEmails(emails) {
     // Store all emails for potential future display
     currentEmails = sortEmailsByDate(emails);
     displayedCount = 0;
-    
+
     // Update results count
     updateResultsCount(currentEmails.length);
-    
+
     if (currentEmails.length === 0) {
         emailList.innerHTML = '<li>No emails found</li>';
         // Hide the show more button if there are no results
         document.getElementById('show-more-container').style.display = 'none';
         return;
     }
-    
+
     // Clear the email list
     emailList.innerHTML = '';
-    
+
     // Display first batch of emails
     showNextBatch();
-    
+
     // Get the show more button and attach event listener
     if (!showMoreButton) {
         showMoreButton = document.getElementById('show-more-button');
         showMoreButton.addEventListener('click', showNextBatch);
     }
-    
+
     // Show or hide the show more button based on whether there are more emails to display
     updateShowMoreButtonVisibility();
 }
@@ -124,9 +234,9 @@ function updateResultsCount(count) {
 function showNextBatch() {
     const start = displayedCount;
     const end = Math.min(start + batchSize, currentEmails.length);
-    
+
     const batch = currentEmails.slice(start, end);
-    
+
     const batchHTML = batch.map(email => {
         // Format attachment information
         let attachmentInfo = '';
@@ -138,10 +248,10 @@ function showNextBatch() {
         } else if (email.has_attachments) {
             attachmentInfo = '<div class="email-attachments">📎 Attachment</div>';
         }
-        
+
         // Add class for emails from me
         const fromMeClass = email.from_me ? ' from-me' : '';
-        
+
         return `
             <li class="email-item${fromMeClass}" data-id="${email.id}" data-idx="${idMapping[email.id]}">
                 <div class="email-subject">${escapeHtml(email.subject)}</div>
@@ -152,9 +262,9 @@ function showNextBatch() {
             </li>
         `;
     }).join('');
-    
+
     emailList.insertAdjacentHTML('beforeend', batchHTML);
-    
+
     // Add click handlers to new email items
     const newItems = emailList.querySelectorAll(`.email-item:not([data-handled])`);
     newItems.forEach(item => {
@@ -169,9 +279,9 @@ function showNextBatch() {
             }
         });
     });
-    
+
     displayedCount = end;
-    
+
     // Update visibility of show more button
     updateShowMoreButtonVisibility();
 }
@@ -200,11 +310,11 @@ function escapeHtml(text) {
     if (Array.isArray(text)) {
         text = text.join(', ');
     }
-    
+
     if (typeof text !== 'string') {
         text = String(text || '');
     }
-    
+
     return text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -213,40 +323,8 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-// Perform full-text search using inverted index
-function performSearch(term) {
-    if (!term) return indexData;
-    
-    // Convert term to lowercase for case-insensitive search
-    const lowerTerm = term.toLowerCase();
-    
-    // For simple implementation, we'll split the term into words and find emails containing any of those words
-    const words = lowerTerm.split(/\s+/).filter(word => word.length > 0);
-    
-    if (words.length === 0) return indexData;
-    
-    // Find all email IDs that contain any of the search words
-    const matchingIds = new Set();
-    
-    words.forEach(word => {
-        // In a more sophisticated implementation, we might do fuzzy matching or stemming
-        // For now, we'll look for exact matches
-        if (searchIndex[word]) {
-            // Convert integer IDs back to email filenames
-            searchIndex[word].forEach(id => {
-                const emailFilename = idMapping[id];
-                if (emailFilename) {
-                    matchingIds.add(emailFilename);
-                }
-            });
-        }
-    });
-    
-    // Filter main index data by matching IDs
-    return indexData.filter(email => matchingIds.has(email.id));
-}
-
-// Filter emails by various criteria
+// Filter emails by various criteria. Returns the notes describing anything the
+// search index could not answer.
 function filterEmails() {
     const searchTerm = searchInput.value.trim();
     const fromTerm = fromFilter.value.toLowerCase();
@@ -254,10 +332,20 @@ function filterEmails() {
     const startDate = dateStart.value;
     const endDate = dateEnd.value;
     const hasAttachmentFilter = hasAttachment.checked;
-    
-    // Start with either search results or all emails
-    let filtered = searchTerm ? performSearch(searchTerm) : [...indexData];
-    
+
+    let filtered = indexData;
+    let notes = '';
+
+    if (searchTerm) {
+        const result = searchIds(searchTerm, searchIndex);
+        notes = searchNotes(result);
+        if (result.ids !== null) {
+            // The posting lists hold the index of each email, which is what
+            // id_mapping.json maps a Message-ID to.
+            filtered = indexData.filter(email => result.ids.has(idMapping[email.id]));
+        }
+    }
+
     // Apply additional filters
     filtered = filtered.filter(email => {
         // From filter
@@ -268,7 +356,7 @@ function filterEmails() {
                 return false;
             }
         }
-        
+
         // To filter
         if (toTerm) {
             // email.to is an array, check if any address in the array contains the search term
@@ -278,35 +366,58 @@ function filterEmails() {
                 return false;
             }
         }
-        
+
         // Date range filter
         if (startDate && email.date < startDate) {
             return false;
         }
-        
+
         if (endDate && email.date > endDate) {
             return false;
         }
-        
+
         // Attachment filter
         if (hasAttachmentFilter && !email.has_attachments) {
             return false;
         }
-        
+
         return true;
     });
-    
+
     displayEmails(filtered);
+    return notes;
+}
+
+// Search runs on the main thread and can take a while over a large archive, so
+// the status is put up and painted before the work starts.
+async function runSearch() {
+    if (!dataReady) {
+        setStatus('Still loading the archive…', true);
+        return;
+    }
+
+    setStatus('Searching…', true);
+    searchButton.disabled = true;
+    await painted();
+
+    try {
+        setStatus(filterEmails(), false);
+    } catch (error) {
+        console.error('Error searching:', error);
+        setStatus(`Error searching: ${error.message}`, false);
+    } finally {
+        searchButton.disabled = false;
+    }
 }
 
 // Initialize autocomplete for address fields using datalist
 function initAutocomplete() {
     // Populate the datalist with email addresses
     const datalist = document.getElementById('email-datalist');
-    
+
     // Clear existing options
     datalist.innerHTML = '';
-    
+
     // Add each address as an option
     addresses.forEach(address => {
         const option = document.createElement('option');
@@ -314,11 +425,3 @@ function initAutocomplete() {
         datalist.appendChild(option);
     });
 }
-
-// Event listeners
-searchButton.addEventListener('click', filterEmails);
-searchInput.addEventListener('keyup', (e) => {
-    if (e.key === 'Enter') {
-        filterEmails();
-    }
-});

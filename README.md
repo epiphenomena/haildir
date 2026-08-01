@@ -95,11 +95,47 @@ directory is left alone. If those generated files are only partly present the
 build stops and asks for `--rebuild` rather than quietly dropping the emails a
 previous run had recorded.
 
+### Searching
+
+A query is split into words the same way the indexer split the emails, so
+punctuation does not have to be typed around: searching
+`deep.thought@example.com` looks up `deep`, `thought`, `example` and `com`.
+
+Several words match the emails holding **all** of them, not any of them.
+
+Words appearing in more than `--max-postings` emails (500 by default) are left
+out of the search index to keep it small. They are recorded so the page can say
+a word was ignored rather than reporting no results for it, and a query made
+only of such words returns everything instead of nothing. Raising the limit
+makes more words searchable at the cost of a larger `search_index.json`:
+
+```bash
+uv run haildir --rebuild --max-postings 5000 /path/to/maildir /path/to/output
+```
+
+`--rebuild` is required for the new limit to take effect. An incremental build
+keeps ignoring the words a previous run dropped, because their posting lists
+were never written and a partial one would be worse than none.
+
+### Serving from a subdirectory
+
+Every path in the generated site is relative to the page holding it, so the
+output directory can be served from anywhere — `https://example.com/` or
+`https://example.com/mail/archive/` — without being rebuilt.
+
 ### Running tests
 
 Create a test Maildir structure and run the tool on it:
 ```bash
 rake test
+```
+
+Check the search itself against an index large enough to exercise it (needs
+`node`). This generates a Maildir with a word common enough to be dropped from
+the index and words that distinguish "all of these" from "any of these", builds
+it, and runs the page's own search functions over the result:
+```bash
+rake search_test
 ```
 
 ### Running a development server

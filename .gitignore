@@ -3,3 +3,5 @@ test/output/
 __pycache__
 *.egg-info
 config.json
+test/search_maildir/
+test/search_output/
