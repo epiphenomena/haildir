@@ -90,7 +90,7 @@ uv run haildir --rebuild /path/to/maildir /path/to/output
 
 (`--clear` does the same thing.) This removes the `emails/` and `attachments/`
 directories and the generated `index.json`, `addresses.json`,
-`search_index.json`, `id_mapping.json` and `sources.json`; anything else in the output
+`search_index.json`, `id_mapping.json`, `sources.json` and `build.json`; anything else in the output
 directory is left alone. If those generated files are only partly present the
 build stops and asks for `--rebuild` rather than quietly dropping the emails a
 previous run had recorded.
@@ -113,9 +113,11 @@ makes more words searchable at the cost of a larger `search_index.json`:
 uv run haildir --rebuild --max-postings 5000 /path/to/maildir /path/to/output
 ```
 
-`--rebuild` is required for the new limit to take effect. An incremental build
-keeps ignoring the words a previous run dropped, because their posting lists
-were never written and a partial one would be worse than none.
+The limit is only accepted together with `--rebuild`, and the build records it
+in `build.json`. An incremental run keeps ignoring the words a previous run
+dropped — their posting lists were never written, so they cannot be recovered
+from the existing index — and asking it for a different limit is refused rather
+than applied to new words only.
 
 ### Serving from a subdirectory
 

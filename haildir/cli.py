@@ -27,6 +27,11 @@ STATE_FILES = ("index.json", "addresses.json", "search_index.json", "id_mapping.
 # but correct, so an output directory built before this file existed still works.
 SOURCES_FILE = "sources.json"
 
+# The settings the search index was built with, so a later run can tell that it
+# is being asked for something it cannot deliver incrementally. Optional: a
+# build made before this file existed used the default.
+BUILD_FILE = "build.json"
+
 # Directories generated from the Maildir
 GENERATED_DIRS = ("emails", "attachments")
 
@@ -56,7 +61,7 @@ def clear_output(output_path: Path) -> None:
             shutil.rmtree(target)
             removed.append(f"{name}/")
 
-    for name in STATE_FILES + (SOURCES_FILE,):
+    for name in STATE_FILES + (SOURCES_FILE, BUILD_FILE):
         target = output_path / name
         if target.is_file():
             target.unlink()
@@ -70,7 +75,7 @@ def clear_output(output_path: Path) -> None:
 
 def discard_temp_files(output_path: Path) -> None:
     """Drop the temporary files an interrupted run may have left behind."""
-    for name in STATE_FILES + (SOURCES_FILE,):
+    for name in STATE_FILES + (SOURCES_FILE, BUILD_FILE):
         (output_path / f"{name}.tmp").unlink(missing_ok=True)
 
 
@@ -180,19 +185,20 @@ class IndexWriter:
         self.tmp_file.unlink(missing_ok=True)
 
 
-def load_state(output_path: Path) -> tuple[bool, set, int, dict]:
+def load_state(output_path: Path) -> tuple[bool, set, int, dict, int]:
     """
     Prepare the output directory for an incremental build.
 
-    Returns (incremental, addresses, initial_count, sources) where addresses
-    holds the autocomplete entries recorded so far, initial_count is the number
-    of indexes already handed out by previous runs, and sources maps Maildir
-    files to the email index built from them.
+    Returns (incremental, addresses, initial_count, sources, result_limit) where
+    addresses holds the autocomplete entries recorded so far, initial_count is
+    the number of indexes already handed out by previous runs, sources maps
+    Maildir files to the email index built from them, and result_limit is the
+    posting-list limit the existing search index was built with.
     """
     present = [name for name in STATE_FILES if (output_path / name).is_file()]
 
     if not present:
-        return False, set(), 0, {}
+        return False, set(), 0, {}, search.RESULT_LIMIT
 
     if len(present) != len(STATE_FILES):
         missing = [name for name in STATE_FILES if name not in present]
@@ -216,6 +222,19 @@ def load_state(output_path: Path) -> tuple[bool, set, int, dict]:
                 sources = json.load(f)
             if not isinstance(sources, dict):
                 raise ValueError(f"{sources_file} is not a JSON object")
+
+        # A build made before this file existed used the default
+        result_limit = search.RESULT_LIMIT
+        build_file = output_path / BUILD_FILE
+        if build_file.is_file():
+            with open(build_file, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+            if not isinstance(settings, dict):
+                raise ValueError(f"{build_file} is not a JSON object")
+            recorded = settings.get("max_postings", result_limit)
+            if not isinstance(recorded, int) or recorded < 1:
+                raise ValueError(f"{build_file} has a bad max_postings: {recorded!r}")
+            result_limit = recorded
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise IncompleteBuild(f"Could not read the previous build in {output_path}: {e}")
 
@@ -229,13 +248,29 @@ def load_state(output_path: Path) -> tuple[bool, set, int, dict]:
             "later runs will skip the ones already built."
         )
 
-    return True, addresses, initial_count, sources
+    return True, addresses, initial_count, sources, result_limit
 
 
-def parse_maildir(maildir_path: Path, output_path: Path, result_limit: int) -> None:
+def parse_maildir(
+    maildir_path: Path, output_path: Path, result_limit: int, limit_given: bool
+) -> None:
     """Parse Maildir and extract email data, building indexes incrementally."""
     discard_temp_files(output_path)
-    incremental, addresses, initial_count, sources = load_state(output_path)
+    incremental, addresses, initial_count, sources, built_limit = load_state(output_path)
+
+    if incremental:
+        # The words a previous run dropped were stored as empty lists and their
+        # real posting lists were never written, so a different limit cannot be
+        # applied to them without reading every message again. Accepting one
+        # here would cap new words differently from old ones, which is worse
+        # than refusing.
+        if limit_given and result_limit != built_limit:
+            raise click.ClickException(
+                f"This build's search index was made with --max-postings {built_limit}. "
+                f"Changing it to {result_limit} needs --rebuild, because the words the "
+                "previous runs dropped cannot be recovered from the existing index."
+            )
+        result_limit = built_limit
 
     maildir = mailbox.Maildir(str(maildir_path))
     keys = maildir.keys()
@@ -362,6 +397,11 @@ def parse_maildir(maildir_path: Path, output_path: Path, result_limit: int) -> N
     if new_sources != sources:
         write_json(output_path / SOURCES_FILE, new_sources)
 
+    # Recorded so a later run can tell what the existing index was built with
+    build_file = output_path / BUILD_FILE
+    if not build_file.is_file() or built_limit != result_limit:
+        write_json(build_file, {"max_postings": result_limit})
+
 
 def copy_assets(output_path: Path) -> None:
     """Copy static assets to output directory."""
@@ -396,10 +436,14 @@ def copy_assets(output_path: Path) -> None:
     help=(
         "Drop a word from the search index once it appears in this many emails. "
         "Raising it makes common words searchable at the cost of a larger "
-        "search_index.json; it only takes effect with --rebuild."
+        "search_index.json. Only accepted with --rebuild: the words a previous "
+        "run dropped cannot be recovered from the existing index."
     ),
 )
-def main(maildir_path: str, output_path: str, rebuild: bool, result_limit: int) -> None:
+@click.pass_context
+def main(
+    ctx: click.Context, maildir_path: str, output_path: str, rebuild: bool, result_limit: int
+) -> None:
     """
     Convert a Maildir archive to a static, searchable HTML site.
 
@@ -423,7 +467,10 @@ def main(maildir_path: str, output_path: str, rebuild: bool, result_limit: int) 
 
     # Parse maildir
     logger.info("Starting email parsing...")
-    parse_maildir(maildir_path_obj, output_path_obj, result_limit)
+    limit_given = (
+        ctx.get_parameter_source("result_limit") != click.core.ParameterSource.DEFAULT
+    )
+    parse_maildir(maildir_path_obj, output_path_obj, result_limit, limit_given)
     logger.info("Email parsing completed.")
 
     # Copy assets
