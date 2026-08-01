@@ -16,9 +16,30 @@ def tokenize(text: str) -> List[str]:
 class InvertedIndex:
     """An inverted index that can be built incrementally."""
 
-    def __init__(self, output_path: Path):
+    def __init__(self, output_path: Path, load_existing: bool = False):
         self.output_path = output_path
+        self.index_file = output_path / "search_index.json"
         self.inverted_index: Dict[str, Set[int]] = collections.defaultdict(set)
+        # Words that matched too many emails to be worth indexing. They are
+        # stored in the index file as empty posting lists, which the client
+        # treats exactly like a word that is not in the index at all.
+        self.dropped: Set[str] = set()
+        if load_existing:
+            self.load()
+
+    def load(self) -> None:
+        """Load an index written by a previous run so it can be extended."""
+        with open(self.index_file, 'r', encoding='utf-8') as f:
+            existing = json.load(f)
+
+        if not isinstance(existing, dict):
+            raise ValueError(f"{self.index_file} is not a JSON object")
+
+        for word, email_ids in existing.items():
+            if email_ids:
+                self.inverted_index[word] = set(email_ids)
+            else:
+                self.dropped.add(word)
 
     def add_email(self, msg: hail.Hail) -> None:
         """Add an email to the inverted index."""
@@ -29,14 +50,25 @@ class InvertedIndex:
 
         # Add each word to the index
         for word in words:
-            self.inverted_index[word].add(msg.idx)
+            # Never revive a dropped word: its posting list is incomplete, so a
+            # partial list of hits would be worse than no hits at all.
+            if word not in self.dropped:
+                self.inverted_index[word].add(msg.idx)
 
     def save(self) -> None:
         """Finalize the index files by writing them to disk."""
         # Convert sets to lists for JSON serialization
-        serializable_index = {word: list(email_ids) for word, email_ids in self.inverted_index.items() if len(email_ids) < RESULT_LIMIT}
+        serializable_index = {}
+        for word, email_ids in self.inverted_index.items():
+            if len(email_ids) < RESULT_LIMIT:
+                serializable_index[word] = sorted(email_ids)
+            else:
+                self.dropped.add(word)
+
+        # Record the dropped words so a later incremental build keeps ignoring them
+        for word in self.dropped:
+            serializable_index[word] = []
 
         # Save the inverted index
-        search_index_file = self.output_path / "search_index.json"
-        with open(search_index_file, 'w', encoding='utf-8') as f:
+        with open(self.index_file, 'w', encoding='utf-8') as f:
             json.dump(serializable_index, f, ensure_ascii=False, indent=None)

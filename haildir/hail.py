@@ -32,9 +32,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class EmailAlreadyProcessed(Exception):
-    pass
-
 class Hail:
     """
     A class to represent an email message from a Maildir.
@@ -54,13 +51,7 @@ class Hail:
         self.msg = msg
 
         # Extract and set the original Message-ID
-        self.original_id = msg.get("Message-ID", "")
-        if not self.original_id:
-            logger.warning(f"Failed to get Message-ID: {msg}")
-            # Generate a unique ID if Message-ID is missing
-            self.original_id = hashlib.md5(
-                f"{msg.get('From', '')}{msg.get('Date', '')}".encode()
-            ).hexdigest()
+        self.original_id = type(self).message_id(msg)
 
         # Add the ID to class-level tracking
         self_cls = type(self)
@@ -73,12 +64,17 @@ class Hail:
             # If already exists, use existing index
             self.idx = self_cls.d[self.original_id]
 
-    @classmethod
-    def from_maildir(cls, msg):
-        if id := msg.get("Message-ID", "") in cls.d:
-            raise EmailAlreadyProcessed(id)
-        else:
-            return cls(msg)
+    @staticmethod
+    def message_id(msg):
+        """Return the Message-ID of a message, or a stable substitute if it has none."""
+        original_id = msg.get("Message-ID", "")
+        if not original_id:
+            logger.warning(f"Failed to get Message-ID: {msg}")
+            # Generate a unique ID if Message-ID is missing
+            original_id = hashlib.md5(
+                f"{msg.get('From', '')}{msg.get('Date', '')}".encode()
+            ).hexdigest()
+        return original_id
 
     @property
     def from_addr(self):
@@ -342,3 +338,47 @@ class Hail:
         id_mapping_file = dir / "id_mapping.json"
         with open(id_mapping_file, 'w', encoding='utf-8') as f:
             json.dump(cls.d, f, ensure_ascii=False, indent=None)
+
+    @classmethod
+    def load_id_idx(cls, dir):
+        """
+        Restore the id -> index mapping written by a previous run so that an
+        incremental build keeps assigning the same index to the same message.
+
+        Returns the number of indexes already in use (the next new email gets
+        the index that follows them).
+        """
+        id_mapping_file = dir / "id_mapping.json"
+        with open(id_mapping_file, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+
+        if not isinstance(mapping, dict):
+            raise ValueError(f"{id_mapping_file} is not a JSON object")
+
+        cls.d = {}
+        cls.ls = []
+        for original_id, idx in mapping.items():
+            if not isinstance(idx, int) or idx < 0:
+                raise ValueError(f"{id_mapping_file} has a bad index for {original_id}: {idx!r}")
+            if idx >= len(cls.ls):
+                # Grow the list; unused slots stay None (see forget()).
+                cls.ls.extend([None] * (idx + 1 - len(cls.ls)))
+            if cls.ls[idx] is not None:
+                raise ValueError(
+                    f"{id_mapping_file} maps both {cls.ls[idx]} and {original_id} to index {idx}"
+                )
+            cls.ls[idx] = original_id
+            cls.d[original_id] = idx
+
+        return len(cls.ls)
+
+    @classmethod
+    def forget(cls, original_id):
+        """
+        Drop an id from the mapping so a message that failed part way through
+        processing is retried on the next run. The slot in `ls` is left empty
+        rather than reused, so indexes already handed out stay valid.
+        """
+        idx = cls.d.pop(original_id, None)
+        if idx is not None:
+            cls.ls[idx] = None

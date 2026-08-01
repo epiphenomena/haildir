@@ -11,8 +11,7 @@ CLEAN.include(TEST_OUTPUT)
 # Task to run the haildir tool on test data
 desc "Run haildir on test Maildir"
 task :test do
-  sh "rm -rf #{TEST_OUTPUT}"
-  sh "uv run haildir #{TEST_MAILDIR} #{TEST_OUTPUT}"
+  sh "uv run haildir --rebuild #{TEST_MAILDIR} #{TEST_OUTPUT}"
   puts "Test output generated in #{TEST_OUTPUT}"
 end
 

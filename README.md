@@ -55,6 +55,28 @@ uv run python -m http.server -p 8000
 This will process the Maildir archive and generate a static website in the output directory.
 Then start up a simple dev server in the output dir.
 
+### Incremental builds
+
+By default only the emails missing from the output directory are built, so the
+command can be re-run as the Maildir grows and it will just pick up the new
+messages. Messages are matched by `Message-ID`, and each one keeps the index it
+was first assigned, so the search indexes stay valid across runs. If an email's
+JSON file has gone missing from the output directory it is written again
+without disturbing the indexes.
+
+To throw away the previous build and start over:
+
+```bash
+uv run haildir --rebuild /path/to/maildir /path/to/output
+```
+
+(`--clear` does the same thing.) This removes the `emails/` and `attachments/`
+directories and the generated `index.json`, `addresses.json`,
+`search_index.json` and `id_mapping.json`; anything else in the output
+directory is left alone. If those generated files are only partly present the
+build stops and asks for `--rebuild` rather than quietly dropping the emails a
+previous run had recorded.
+
 ### Running tests
 
 Create a test Maildir structure and run the tool on it:
