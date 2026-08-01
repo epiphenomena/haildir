@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import collections
 from pathlib import Path
@@ -24,11 +25,12 @@ class InvertedIndex:
         # stored in the index file as empty posting lists, which the client
         # treats exactly like a word that is not in the index at all.
         self.dropped: Set[str] = set()
-        if load_existing:
-            self.load()
+        # Loaded on demand: a run that adds nothing never has to read it
+        self.pending_load = load_existing
 
     def load(self) -> None:
         """Load an index written by a previous run so it can be extended."""
+        self.pending_load = False
         with open(self.index_file, 'r', encoding='utf-8') as f:
             existing = json.load(f)
 
@@ -44,6 +46,8 @@ class InvertedIndex:
     def add_email(self, msg: hail.Hail) -> None:
         """Add an email to the inverted index."""
 
+        if self.pending_load:
+            self.load()
 
         # Tokenize the content
         words = tokenize(msg.search_content())
@@ -57,6 +61,10 @@ class InvertedIndex:
 
     def save(self) -> None:
         """Finalize the index files by writing them to disk."""
+        if self.pending_load:
+            # Nothing was added, but saving must not drop what is already there
+            self.load()
+
         # Convert sets to lists for JSON serialization
         serializable_index = {}
         for word, email_ids in self.inverted_index.items():
@@ -69,6 +77,9 @@ class InvertedIndex:
         for word in self.dropped:
             serializable_index[word] = []
 
-        # Save the inverted index
-        with open(self.index_file, 'w', encoding='utf-8') as f:
+        # Save the inverted index by replacing it, so an interrupted write
+        # leaves the previous index intact
+        tmp_file = self.index_file.with_name(self.index_file.name + ".tmp")
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             json.dump(serializable_index, f, ensure_ascii=False, indent=None)
+        os.replace(tmp_file, self.index_file)

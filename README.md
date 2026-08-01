@@ -64,6 +64,24 @@ was first assigned, so the search indexes stay valid across runs. If an email's
 JSON file has gone missing from the output directory it is written again
 without disturbing the indexes.
 
+`sources.json` records which Maildir file produced which email, so a re-run
+skips files it has already built without opening them — a run with nothing new
+costs a directory listing rather than a full parse of the archive. Deleting it
+only makes the next run slow, not wrong: it is rebuilt by reading every message
+again.
+
+Note that a Maildir downloaded from Gmail usually holds several copies of the
+same message (one per label), so the number of emails in the output is expected
+to be well below the number of files in the Maildir. Copies after the first are
+counted as "skipped".
+
+Each run leaves the previous output servable until it finishes: `index.json`,
+`search_index.json`, `addresses.json`, `id_mapping.json` and `sources.json` are
+written to a temporary file and moved into place at the end, so an interrupted
+run costs that run's work and nothing else. If a run leaves `index.json`
+unclosed (which the versions before this could do), the next build stops and
+asks for `--rebuild` instead of appending to a broken file.
+
 To throw away the previous build and start over:
 
 ```bash
@@ -72,7 +90,7 @@ uv run haildir --rebuild /path/to/maildir /path/to/output
 
 (`--clear` does the same thing.) This removes the `emails/` and `attachments/`
 directories and the generated `index.json`, `addresses.json`,
-`search_index.json` and `id_mapping.json`; anything else in the output
+`search_index.json`, `id_mapping.json` and `sources.json`; anything else in the output
 directory is left alone. If those generated files are only partly present the
 build stops and asks for `--rebuild` rather than quietly dropping the emails a
 previous run had recorded.

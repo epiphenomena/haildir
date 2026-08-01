@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import re
 import email as std_email
@@ -336,8 +337,10 @@ class Hail:
     def save_id_idx(cls, dir):
         # Save the ID to email mapping
         id_mapping_file = dir / "id_mapping.json"
-        with open(id_mapping_file, 'w', encoding='utf-8') as f:
+        tmp_file = id_mapping_file.with_name(id_mapping_file.name + ".tmp")
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             json.dump(cls.d, f, ensure_ascii=False, indent=None)
+        os.replace(tmp_file, id_mapping_file)
 
     @classmethod
     def load_id_idx(cls, dir):
